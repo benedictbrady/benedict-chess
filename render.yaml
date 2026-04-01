@@ -5,7 +5,7 @@ services:
     repo: https://github.com/benedictbrady/benedict-chess
     branch: main
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: standard
     envVars:
       - key: PORT
         value: 10000
