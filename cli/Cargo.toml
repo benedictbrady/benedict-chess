@@ -1,0 +1,15 @@
+[package]
+name = "benedict-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "benedict"
+path = "src/main.rs"
+
+[[bin]]
+name = "benedict-match"
+path = "src/match_runner.rs"
+
+[dependencies]
+benedict-engine = { path = "../engine" }
