@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: benedict-chess-api
+    runtime: docker
+    repo: https://github.com/benedictbrady/benedict-chess
+    branch: main
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
