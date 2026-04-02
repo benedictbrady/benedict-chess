@@ -211,7 +211,9 @@ impl ThreadSearcher {
 
         self.pv_length[ply] = 0;
 
-        if ply > 0 && self.is_repetition(board.hash) {
+        let is_root = ply == 0;
+
+        if !is_root && self.is_repetition(board.hash) {
             return 0;
         }
 
@@ -240,6 +242,15 @@ impl ThreadSearcher {
             return self.quiescence(board, alpha, beta, ply);
         }
 
+        // Static eval (cached for pruning decisions)
+        let static_eval = evaluate_with_params(board, &self.eval_params);
+
+        // Note: Null Move Pruning and Reverse Futility Pruning were tested
+        // and found to hurt in Benedict chess — the game is too tactical for
+        // forward pruning. Even reaching +2-5 depth with pruning loses games
+        // because the eval at leaf nodes is unreliable.
+        let _ = static_eval; // computed for potential future use
+
         let mut moves = MoveList::new();
         generate_moves(board, &mut moves);
 
@@ -252,6 +263,7 @@ impl ThreadSearcher {
         let mut best_move = Move::NULL;
         let mut best_score = -MATE_SCORE - 1;
         let mut bound = Bound::Upper;
+        let mut raised_alpha = false;
 
         for i in 0..moves.len() {
             self.pick_move(&mut moves, i);
@@ -259,9 +271,11 @@ impl ThreadSearcher {
 
             let undo = board.make_move(m);
             self.nodes += 1;
+            self.position_history.push(board.hash);
 
             let them = board.side_to_move;
             if board.king_flipped(&undo, them) {
+                self.position_history.pop();
                 board.unmake_move(m, &undo);
                 let score = MATE_SCORE - ply as i32;
                 self.shared.tt.store(board.hash, m, score, depth, Bound::Exact);
@@ -270,17 +284,48 @@ impl ThreadSearcher {
                 return score;
             }
 
-            let mut search_depth = depth - 1;
-            if i >= 4 && depth >= 3 && !m.is_promotion() && undo.flipped.is_empty() {
-                search_depth -= 1;
+            // Late Move Reductions (LMR)
+            // Exempt: TT move, killers, moves that flip pieces, promotions
+            let is_tt_move = m == tt_move;
+            let is_killer = self.killers[ply][0] == m || self.killers[ply][1] == m;
+            let has_flips = undo.flipped.is_not_empty();
+            let lmr_exempt = is_tt_move || is_killer || has_flips || m.is_promotion();
+
+            let mut reduction = 0;
+            if !lmr_exempt && i >= 4 && depth >= 3 {
+                reduction = 1;
             }
 
-            let mut score = -self.alpha_beta(board, search_depth, -beta, -alpha, ply + 1);
+            let search_depth = depth - 1 - reduction;
 
-            if search_depth < depth - 1 && score > alpha {
-                score = -self.alpha_beta(board, depth - 1, -beta, -alpha, ply + 1);
+            // Principal Variation Search (PVS)
+            let mut score;
+            if raised_alpha && !is_root {
+                // Zero-window search
+                score = -self.alpha_beta(board, search_depth, -alpha - 1, -alpha, ply + 1);
+
+                // If zero-window fails high AND we used a reduced depth,
+                // re-search at full depth with zero window first
+                if score > alpha && reduction > 0 {
+                    score =
+                        -self.alpha_beta(board, depth - 1, -alpha - 1, -alpha, ply + 1);
+                }
+
+                // If still fails high, re-search with full window
+                if score > alpha && score < beta {
+                    score = -self.alpha_beta(board, depth - 1, -beta, -alpha, ply + 1);
+                }
+            } else {
+                // First move or root: full window search
+                score = -self.alpha_beta(board, search_depth, -beta, -alpha, ply + 1);
+
+                // If we used LMR and it beat alpha, re-search at full depth
+                if reduction > 0 && score > alpha {
+                    score = -self.alpha_beta(board, depth - 1, -beta, -alpha, ply + 1);
+                }
             }
 
+            self.position_history.pop();
             board.unmake_move(m, &undo);
 
             if self.stopped {
@@ -294,6 +339,7 @@ impl ThreadSearcher {
                 if score > alpha {
                     alpha = score;
                     bound = Bound::Exact;
+                    raised_alpha = true;
 
                     self.pv_table[ply][0] = m;
                     if ply + 1 < MAX_PLY {

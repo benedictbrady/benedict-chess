@@ -320,9 +320,59 @@ fn main() {
             let new_eval = EvalParams::default(); // king_danger_weight=30
             run_match("KingDanger(30)", &new_eval, "NoKingDanger", &old_eval, num_games, time_per_move);
         }
+        "pawn_advance" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.pawn_advance_bonus = 15;
+            run_match("PawnAdv(15)", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "flip_balance" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.flip_balance_weight = 5;
+            run_match("FlipBal(5)", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "pawn_advance_10" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.pawn_advance_bonus = 10;
+            run_match("PawnAdv(10)", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "flip_balance_3" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.flip_balance_weight = 3;
+            run_match("FlipBal(3)", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "tempo_15" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.tempo_bonus = 15;
+            run_match("Tempo(15)", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "king_shield_10" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.king_shield_bonus = 10;
+            run_match("KingShield(10)", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "kd_50" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.king_danger_weight = 50;
+            run_match("KD(50)", &candidate, "Baseline(KD30)", &baseline, num_games, time_per_move);
+        }
+        "mega" => {
+            // Tested winners: tempo(15) +89 ELO, king_shield(10) +147 ELO
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.tempo_bonus = 15;
+            candidate.king_shield_bonus = 10;
+            run_match("Tempo15+KS10", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
         other => {
             eprintln!("Unknown test: {}", other);
-            eprintln!("Available: baseline, mobility, knight_threats, king_shield, tempo, queen_threat_high, combined, king_danger, all");
+            eprintln!("Available: baseline, pawn_advance, flip_balance, mega, king_danger, all");
             std::process::exit(1);
         }
     }

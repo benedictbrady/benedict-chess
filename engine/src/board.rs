@@ -298,6 +298,22 @@ impl Board {
         }
     }
 
+    /// Make a null move (pass): toggle side to move and update hash.
+    /// Returns the hash before the null move so it can be restored.
+    pub fn make_null_move(&mut self) -> u64 {
+        let old_hash = self.hash;
+        let z = zobrist();
+        self.side_to_move = self.side_to_move.flip();
+        self.hash ^= z.side_to_move;
+        old_hash
+    }
+
+    /// Unmake a null move: toggle side to move back and restore the hash.
+    pub fn unmake_null_move(&mut self, old_hash: u64) {
+        self.side_to_move = self.side_to_move.flip();
+        self.hash = old_hash;
+    }
+
     /// Check if the last move resulted in the enemy king being flipped (game over).
     pub fn king_flipped(&self, undo: &UndoInfo, _them: Color) -> bool {
         let king_bb = self.pieces[PieceKind::King.index()];
