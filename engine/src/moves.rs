@@ -95,6 +95,11 @@ impl Move {
         self.0
     }
 
+    #[inline]
+    pub fn from_raw(val: u32) -> Self {
+        Move(val)
+    }
+
     pub fn to_uci(self) -> String {
         let mut s = format!(
             "{}{}",

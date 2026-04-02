@@ -49,7 +49,7 @@ fn play_game(
             &mut black
         };
         searcher.set_position_history(position_hashes.clone());
-        searcher.tt.new_generation();
+        searcher.tt().new_generation();
 
         let info = searcher.search(&mut board, 64, Some(time_per_move));
         let best_move = info.best_move;
@@ -314,9 +314,15 @@ fn main() {
             println!("\n=== Summary ===");
             println!("See results above for each candidate vs Baseline.");
         }
+        "king_danger" => {
+            let mut old_eval = EvalParams::default();
+            old_eval.king_danger_weight = 0;
+            let new_eval = EvalParams::default(); // king_danger_weight=30
+            run_match("KingDanger(30)", &new_eval, "NoKingDanger", &old_eval, num_games, time_per_move);
+        }
         other => {
             eprintln!("Unknown test: {}", other);
-            eprintln!("Available: baseline, mobility, knight_threats, king_shield, tempo, queen_threat_high, combined, all");
+            eprintln!("Available: baseline, mobility, knight_threats, king_shield, tempo, queen_threat_high, combined, king_danger, all");
             std::process::exit(1);
         }
     }

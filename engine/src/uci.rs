@@ -2,20 +2,28 @@ use crate::board::Board;
 use crate::fen;
 use crate::movegen::{generate_moves, perft};
 use crate::moves::{Move, MoveList, FLAG_CASTLE, FLAG_DOUBLE_PUSH};
-use crate::search::Searcher;
+use crate::search::{search_smp, SharedSearch};
 use crate::types::{Color, PieceKind};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
 pub struct Uci {
     board: Board,
-    searcher: Searcher,
+    shared: Arc<SharedSearch>,
+    num_threads: usize,
+    position_history: Vec<u64>,
+    search_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Uci {
     pub fn new() -> Self {
         Uci {
             board: Board::startpos(),
-            searcher: Searcher::new(64), // 64 MB TT
+            shared: Arc::new(SharedSearch::new(64)),
+            num_threads: 1,
+            position_history: Vec::new(),
+            search_handle: None,
         }
     }
 
@@ -39,14 +47,21 @@ impl Uci {
                     println!("id name Benedict Engine 0.1");
                     println!("id author Benedict Chess Project");
                     println!("option name Hash type spin default 64 min 1 max 1024");
+                    println!("option name Threads type spin default 1 min 1 max 256");
                     println!("uciok");
                 }
                 "isready" => {
+                    self.wait_for_search();
                     println!("readyok");
                 }
                 "ucinewgame" => {
-                    self.searcher.tt.clear();
+                    self.wait_for_search();
+                    self.shared.tt.clear();
                     self.board = Board::startpos();
+                    self.position_history.clear();
+                }
+                "setoption" => {
+                    self.handle_setoption(&parts[1..]);
                 }
                 "position" => {
                     self.handle_position(&parts[1..]);
@@ -55,9 +70,12 @@ impl Uci {
                     self.handle_go(&parts[1..]);
                 }
                 "stop" => {
-                    // Handled by search timeout
+                    self.shared.stop_flag.store(true, Ordering::Relaxed);
+                    self.wait_for_search();
                 }
                 "quit" | "exit" => {
+                    self.shared.stop_flag.store(true, Ordering::Relaxed);
+                    self.wait_for_search();
                     break;
                 }
                 "d" | "display" => {
@@ -97,6 +115,38 @@ impl Uci {
         }
     }
 
+    fn wait_for_search(&mut self) {
+        if let Some(handle) = self.search_handle.take() {
+            let _ = handle.join();
+        }
+    }
+
+    fn handle_setoption(&mut self, args: &[&str]) {
+        // Format: name <name> value <value>
+        if args.len() < 4 || args[0] != "name" {
+            return;
+        }
+        let value_idx = args.iter().position(|&a| a == "value");
+        let Some(vi) = value_idx else { return };
+        let name = args[1..vi].join(" ").to_lowercase();
+        let value = args[vi + 1..].join(" ");
+
+        match name.as_str() {
+            "hash" => {
+                if let Ok(mb) = value.parse::<usize>() {
+                    self.wait_for_search();
+                    self.shared = Arc::new(SharedSearch::new(mb));
+                }
+            }
+            "threads" => {
+                if let Ok(n) = value.parse::<usize>() {
+                    self.num_threads = n.max(1).min(256);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn handle_position(&mut self, args: &[&str]) {
         if args.is_empty() {
             return;
@@ -111,7 +161,6 @@ impl Uci {
                 move_start = 2;
             }
         } else if args[0] == "fen" {
-            // Collect FEN string (up to 6 parts)
             let mut fen_end = 1;
             for i in 1..args.len() {
                 if args[i] == "moves" {
@@ -134,17 +183,16 @@ impl Uci {
         }
 
         // Apply moves
-        let mut position_hashes = vec![self.board.hash];
+        self.position_history = vec![self.board.hash];
         for move_str in &args[move_start..] {
             if let Some(m) = self.parse_move(move_str) {
                 self.board.make_move(m);
-                position_hashes.push(self.board.hash);
+                self.position_history.push(self.board.hash);
             } else {
                 println!("info string Invalid move: {}", move_str);
                 return;
             }
         }
-        self.searcher.set_position_history(position_hashes);
     }
 
     fn parse_move(&self, s: &str) -> Option<Move> {
@@ -152,7 +200,6 @@ impl Uci {
         let from = base.from_sq();
         let to = base.to_sq();
 
-        // Check if this is a castling move
         if let Some(piece) = self.board.piece_at(from) {
             if piece.kind == PieceKind::King {
                 let file_diff = (to.file() as i8 - from.file() as i8).abs();
@@ -161,7 +208,6 @@ impl Uci {
                 }
             }
 
-            // Check for double pawn push
             if piece.kind == PieceKind::Pawn {
                 let rank_diff = (to.rank() as i8 - from.rank() as i8).abs();
                 if rank_diff == 2 {
@@ -169,7 +215,6 @@ impl Uci {
                 }
             }
 
-            // Check for promotion
             if base.is_promotion() {
                 return Some(base);
             }
@@ -179,6 +224,8 @@ impl Uci {
     }
 
     fn handle_go(&mut self, args: &[&str]) {
+        self.wait_for_search();
+
         let mut max_depth = 64i32;
         let mut movetime: Option<u64> = None;
         let mut wtime: Option<u64> = None;
@@ -215,11 +262,9 @@ impl Uci {
             }
         }
 
-        // Determine time limit
         let time_limit = if let Some(mt) = movetime {
             Some(Duration::from_millis(mt))
         } else {
-            // Simple time management: use 1/30 of remaining time
             let our_time = match self.board.side_to_move {
                 Color::White => wtime,
                 Color::Black => btime,
@@ -227,7 +272,25 @@ impl Uci {
             our_time.map(|t| Duration::from_millis(t / 30))
         };
 
-        let info = self.searcher.search(&mut self.board, max_depth, time_limit);
-        println!("bestmove {}", info.best_move.to_uci());
+        // Spawn the search on a background thread so UCI input stays responsive
+        let shared = Arc::clone(&self.shared);
+        let board = self.board.clone();
+        let num_threads = self.num_threads;
+        let eval_params = crate::eval::EvalParams::default();
+        let position_history = self.position_history.clone();
+
+        self.search_handle = Some(std::thread::spawn(move || {
+            let info = search_smp(
+                &shared,
+                &board,
+                max_depth,
+                time_limit,
+                num_threads,
+                &eval_params,
+                position_history,
+                false,
+            );
+            println!("bestmove {}", info.best_move.to_uci());
+        }));
     }
 }

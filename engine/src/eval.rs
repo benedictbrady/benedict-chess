@@ -1,3 +1,4 @@
+use crate::bitboard::Bitboard;
 use crate::board::Board;
 use crate::tables::tables;
 use crate::types::{Color, PieceKind};
@@ -21,6 +22,8 @@ pub struct EvalParams {
     pub piece_count_weight: i32,
     /// Tempo bonus for side to move
     pub tempo_bonus: i32,
+    /// Weight for king danger (bonus per attack unit on enemy king zone)
+    pub king_danger_weight: i32,
 }
 
 impl Default for EvalParams {
@@ -34,6 +37,7 @@ impl Default for EvalParams {
             king_shield_bonus: 0,
             piece_count_weight: 0,
             tempo_bonus: 0,
+            king_danger_weight: 30,
         }
     }
 }
@@ -41,7 +45,7 @@ impl Default for EvalParams {
 impl EvalParams {
     pub fn name(&self) -> String {
         format!(
-            "pv={:?} pst={} qt={} kt={} mob={} ks={} pc={} tempo={}",
+            "pv={:?} pst={} qt={} kt={} mob={} ks={} pc={} tempo={} kd={}",
             &self.piece_values[..5],
             self.pst_weight,
             self.queen_threat_bonus,
@@ -50,6 +54,7 @@ impl EvalParams {
             self.king_shield_bonus,
             self.piece_count_weight,
             self.tempo_bonus,
+            self.king_danger_weight,
         )
     }
 }
@@ -245,6 +250,63 @@ pub fn evaluate_with_params(board: &Board, params: &EvalParams) -> i32 {
         } else {
             -params.tempo_bonus
         };
+    }
+
+    // King danger: how many of your pieces pressure the enemy king zone?
+    // King zone = king square + all adjacent squares (up to 9 squares).
+    // Each piece type contributes weighted attack units based on how many
+    // king-zone squares it hits. This guides the search toward kill shots.
+    if params.king_danger_weight != 0 {
+        let occ = board.occupied;
+        let bk = board.king_square(Color::Black);
+        let wk = board.king_square(Color::White);
+        let bk_zone = t.king_attacks(bk) | Bitboard::from_square(bk);
+        let wk_zone = t.king_attacks(wk) | Bitboard::from_square(wk);
+
+        let mut w_pressure = 0i32;
+        let mut b_pressure = 0i32;
+
+        // Pawns (weight 1)
+        for sq in board.pieces[PieceKind::Pawn.index()] & white {
+            w_pressure += (t.pawn_attacks(Color::White, sq) & bk_zone).popcount() as i32;
+        }
+        for sq in board.pieces[PieceKind::Pawn.index()] & black {
+            b_pressure += (t.pawn_attacks(Color::Black, sq) & wk_zone).popcount() as i32;
+        }
+
+        // Knights (weight 2)
+        for sq in board.pieces[PieceKind::Knight.index()] & white {
+            w_pressure += (t.knight_attacks(sq) & bk_zone).popcount() as i32 * 2;
+        }
+        for sq in board.pieces[PieceKind::Knight.index()] & black {
+            b_pressure += (t.knight_attacks(sq) & wk_zone).popcount() as i32 * 2;
+        }
+
+        // Bishops (weight 2)
+        for sq in board.pieces[PieceKind::Bishop.index()] & white {
+            w_pressure += (t.bishop_attacks(sq, occ) & bk_zone).popcount() as i32 * 2;
+        }
+        for sq in board.pieces[PieceKind::Bishop.index()] & black {
+            b_pressure += (t.bishop_attacks(sq, occ) & wk_zone).popcount() as i32 * 2;
+        }
+
+        // Rooks (weight 3)
+        for sq in board.pieces[PieceKind::Rook.index()] & white {
+            w_pressure += (t.rook_attacks(sq, occ) & bk_zone).popcount() as i32 * 3;
+        }
+        for sq in board.pieces[PieceKind::Rook.index()] & black {
+            b_pressure += (t.rook_attacks(sq, occ) & wk_zone).popcount() as i32 * 3;
+        }
+
+        // Queens (weight 4)
+        for sq in board.pieces[PieceKind::Queen.index()] & white {
+            w_pressure += (t.queen_attacks(sq, occ) & bk_zone).popcount() as i32 * 4;
+        }
+        for sq in board.pieces[PieceKind::Queen.index()] & black {
+            b_pressure += (t.queen_attacks(sq, occ) & wk_zone).popcount() as i32 * 4;
+        }
+
+        score += (w_pressure - b_pressure) * params.king_danger_weight;
     }
 
     // Return from side-to-move perspective
