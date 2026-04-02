@@ -272,6 +272,13 @@ impl Uci {
             our_time.map(|t| Duration::from_millis(t / 30))
         };
 
+        // Check opening book first
+        if let Some(book_move) = crate::book::probe(self.board.hash) {
+            println!("info string book move");
+            println!("bestmove {}", book_move.to_uci());
+            return;
+        }
+
         // Spawn the search on a background thread so UCI input stays responsive
         let shared = Arc::clone(&self.shared);
         let board = self.board.clone();
