@@ -157,6 +157,21 @@ async fn analyze(Json(req): Json<AnalyzeRequest>) -> Result<Json<AnalyzeResponse
     let mut board = setup_position(&req.position, &req.moves)
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
+    // Check opening book first
+    if let Some(book_move) = benedict_engine::book::probe(board.hash) {
+        let fen_str = fen::to_fen(&board);
+        return Ok(Json(AnalyzeResponse {
+            best_move: book_move.to_uci(),
+            score: 0,
+            depth: 0,
+            nodes: 0,
+            pv: vec![book_move.to_uci()],
+            fen: fen_str,
+            game_over: false,
+            winner: None,
+        }));
+    }
+
     let time_limit = Duration::from_millis(req.time_ms);
     let mut searcher = Searcher::with_params(32, EvalParams::default());
     searcher.silent = true;
