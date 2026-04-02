@@ -46,6 +46,9 @@ pub struct ThreadSearcher {
     stopped: bool,
     killers: [[Move; 2]; MAX_PLY],
     history: [[[i32; 64]; 6]; 2],
+    /// Countermove table: indexed by previous move's to-square.
+    /// Stores a move that was a good response (caused beta cutoff).
+    countermoves: [Move; 64],
     pv_table: [[Move; MAX_PLY]; MAX_PLY],
     pv_length: [usize; MAX_PLY],
     position_history: Vec<u64>,
@@ -65,6 +68,7 @@ impl ThreadSearcher {
             stopped: false,
             killers: [[Move::NULL; 2]; MAX_PLY],
             history: [[[0; 64]; 6]; 2],
+            countermoves: [Move::NULL; 64],
             pv_table: [[Move::NULL; MAX_PLY]; MAX_PLY],
             pv_length: [0; MAX_PLY],
             position_history: Vec::new(),
@@ -108,7 +112,7 @@ impl ThreadSearcher {
 
             let mut score;
             loop {
-                score = self.alpha_beta(board, depth, alpha, beta, 0);
+                score = self.alpha_beta(board, depth, alpha, beta, 0, 64);
                 if self.stopped {
                     break;
                 }
@@ -203,6 +207,7 @@ impl ThreadSearcher {
         mut alpha: i32,
         beta: i32,
         ply: usize,
+        prev_move_to: usize,
     ) -> i32 {
         self.check_time();
         if self.stopped {
@@ -211,7 +216,9 @@ impl ThreadSearcher {
 
         self.pv_length[ply] = 0;
 
-        if ply > 0 && self.is_repetition(board.hash) {
+        let is_root = ply == 0;
+
+        if !is_root && self.is_repetition(board.hash) {
             return 0;
         }
 
@@ -240,6 +247,11 @@ impl ThreadSearcher {
             return self.quiescence(board, alpha, beta, ply);
         }
 
+        // Static eval (cached for pruning decisions)
+        let static_eval = evaluate_with_params(board, &self.eval_params);
+
+        let _ = static_eval;
+
         let mut moves = MoveList::new();
         generate_moves(board, &mut moves);
 
@@ -247,11 +259,12 @@ impl ThreadSearcher {
             return 0;
         }
 
-        self.score_moves(board, &mut moves, tt_move, ply);
+        self.score_moves(board, &mut moves, tt_move, ply, prev_move_to);
 
         let mut best_move = Move::NULL;
         let mut best_score = -MATE_SCORE - 1;
         let mut bound = Bound::Upper;
+        let mut raised_alpha = false;
 
         for i in 0..moves.len() {
             self.pick_move(&mut moves, i);
@@ -259,9 +272,12 @@ impl ThreadSearcher {
 
             let undo = board.make_move(m);
             self.nodes += 1;
+            self.position_history.push(board.hash);
+            let move_to = m.to_sq().index();
 
             let them = board.side_to_move;
             if board.king_flipped(&undo, them) {
+                self.position_history.pop();
                 board.unmake_move(m, &undo);
                 let score = MATE_SCORE - ply as i32;
                 self.shared.tt.store(board.hash, m, score, depth, Bound::Exact);
@@ -270,17 +286,48 @@ impl ThreadSearcher {
                 return score;
             }
 
-            let mut search_depth = depth - 1;
-            if i >= 4 && depth >= 3 && !m.is_promotion() && undo.flipped.is_empty() {
-                search_depth -= 1;
+            // Late Move Reductions (LMR)
+            // Exempt: TT move, killers, moves that flip pieces, promotions
+            let is_tt_move = m == tt_move;
+            let is_killer = self.killers[ply][0] == m || self.killers[ply][1] == m;
+            let has_flips = undo.flipped.is_not_empty();
+            let lmr_exempt = is_tt_move || is_killer || has_flips || m.is_promotion();
+
+            let mut reduction = 0;
+            if !lmr_exempt && i >= 4 && depth >= 3 {
+                reduction = 1;
             }
 
-            let mut score = -self.alpha_beta(board, search_depth, -beta, -alpha, ply + 1);
+            let search_depth = depth - 1 - reduction;
 
-            if search_depth < depth - 1 && score > alpha {
-                score = -self.alpha_beta(board, depth - 1, -beta, -alpha, ply + 1);
+            // Principal Variation Search (PVS)
+            let mut score;
+            if raised_alpha && !is_root {
+                // Zero-window search
+                score = -self.alpha_beta(board, search_depth, -alpha - 1, -alpha, ply + 1, move_to);
+
+                // If zero-window fails high AND we used a reduced depth,
+                // re-search at full depth with zero window first
+                if score > alpha && reduction > 0 {
+                    score =
+                        -self.alpha_beta(board, depth - 1, -alpha - 1, -alpha, ply + 1, move_to);
+                }
+
+                // If still fails high, re-search with full window
+                if score > alpha && score < beta {
+                    score = -self.alpha_beta(board, depth - 1, -beta, -alpha, ply + 1, move_to);
+                }
+            } else {
+                // First move or root: full window search
+                score = -self.alpha_beta(board, search_depth, -beta, -alpha, ply + 1, move_to);
+
+                // If we used LMR and it beat alpha, re-search at full depth
+                if reduction > 0 && score > alpha {
+                    score = -self.alpha_beta(board, depth - 1, -beta, -alpha, ply + 1, move_to);
+                }
             }
 
+            self.position_history.pop();
             board.unmake_move(m, &undo);
 
             if self.stopped {
@@ -294,6 +341,7 @@ impl ThreadSearcher {
                 if score > alpha {
                     alpha = score;
                     bound = Bound::Exact;
+                    raised_alpha = true;
 
                     self.pv_table[ply][0] = m;
                     if ply + 1 < MAX_PLY {
@@ -316,6 +364,12 @@ impl ThreadSearcher {
                                     [m.to_sq().index()];
                                 *h += depth * depth;
                             }
+
+                            // Store countermove: this move was a good response
+                            // to the previous move's destination
+                            if prev_move_to < 64 {
+                                self.countermoves[prev_move_to] = m;
+                            }
                         }
                         break;
                     }
@@ -336,10 +390,10 @@ impl ThreadSearcher {
         evaluate_with_params(board, &self.eval_params)
     }
 
-    fn score_moves(&mut self, board: &Board, moves: &MoveList, tt_move: Move, ply: usize) {
+    fn score_moves(&mut self, board: &Board, moves: &MoveList, tt_move: Move, ply: usize, prev_to: usize) {
         for i in 0..moves.len() {
             let m = moves.get(i);
-            self.move_scores[i] = self.move_score(board, m, tt_move, ply);
+            self.move_scores[i] = self.move_score(board, m, tt_move, ply, prev_to);
         }
     }
 
@@ -358,9 +412,17 @@ impl ThreadSearcher {
         }
     }
 
-    fn move_score(&self, board: &Board, m: Move, tt_move: Move, ply: usize) -> i32 {
+    fn move_score(&self, board: &Board, m: Move, tt_move: Move, ply: usize, prev_to: usize) -> i32 {
         if m == tt_move {
             return 10_000_000;
+        }
+
+        // Countermove bonus: if this move was a good response to the previous move
+        if prev_to < 64 {
+            let countermove = self.countermoves[prev_to];
+            if m == countermove {
+                return 700_000;
+            }
         }
 
         let mut score = 0i32;

@@ -24,13 +24,17 @@ pub struct EvalParams {
     pub tempo_bonus: i32,
     /// Weight for king danger (bonus per attack unit on enemy king zone)
     pub king_danger_weight: i32,
+    /// Bonus per rank advanced for pawns (pawns near promotion are weapons)
+    pub pawn_advance_bonus: i32,
+    /// Weight for flip balance (value of pieces we threaten vs they threaten)
+    pub flip_balance_weight: i32,
 }
 
 impl Default for EvalParams {
     fn default() -> Self {
         EvalParams {
             piece_values: [100, 320, 330, 500, 900, 20000],
-            pst_weight: 100, // percent — 100 = full PST, 0 = none
+            pst_weight: 100,
             queen_threat_bonus: 15,
             knight_threat_bonus: 0,
             mobility_weight: 0,
@@ -38,6 +42,8 @@ impl Default for EvalParams {
             piece_count_weight: 0,
             tempo_bonus: 0,
             king_danger_weight: 30,
+            pawn_advance_bonus: 0,
+            flip_balance_weight: 0,
         }
     }
 }
@@ -45,7 +51,7 @@ impl Default for EvalParams {
 impl EvalParams {
     pub fn name(&self) -> String {
         format!(
-            "pv={:?} pst={} qt={} kt={} mob={} ks={} pc={} tempo={} kd={}",
+            "pv={:?} pst={} qt={} kt={} mob={} ks={} pc={} tempo={} kd={} pa={} fb={}",
             &self.piece_values[..5],
             self.pst_weight,
             self.queen_threat_bonus,
@@ -55,6 +61,8 @@ impl EvalParams {
             self.piece_count_weight,
             self.tempo_bonus,
             self.king_danger_weight,
+            self.pawn_advance_bonus,
+            self.flip_balance_weight,
         )
     }
 }
@@ -307,6 +315,77 @@ pub fn evaluate_with_params(board: &Board, params: &EvalParams) -> i32 {
         }
 
         score += (w_pressure - b_pressure) * params.king_danger_weight;
+    }
+
+    // Pawn advancement: pawns near promotion are weapons in Benedict chess.
+    // A pawn on the 7th rank is one step from promoting and flipping everything.
+    if params.pawn_advance_bonus != 0 {
+        let mut w_advance = 0i32;
+        let mut b_advance = 0i32;
+
+        for sq in board.pieces[PieceKind::Pawn.index()] & white {
+            // White pawns advance from rank 1->7 (rank index 0->6)
+            let rank = sq.rank() as i32; // 0-7
+            if rank >= 2 {
+                w_advance += (rank - 1) * (rank - 1); // quadratic bonus for advancement
+            }
+        }
+        for sq in board.pieces[PieceKind::Pawn.index()] & black {
+            // Black pawns advance from rank 6->0 (rank index 7->1)
+            let rank = 7 - sq.rank() as i32;
+            if rank >= 2 {
+                b_advance += (rank - 1) * (rank - 1);
+            }
+        }
+
+        score += (w_advance - b_advance) * params.pawn_advance_bonus;
+    }
+
+    // Flip balance: total value of enemy pieces we threaten to flip minus
+    // total value of our pieces the enemy threatens. This measures the
+    // tactical balance of the position.
+    if params.flip_balance_weight != 0 {
+        let occ = board.occupied;
+        let mut w_threats = 0i32;
+        let mut b_threats = 0i32;
+
+        // White pieces threatening Black pieces
+        for kind in [PieceKind::Knight, PieceKind::Bishop, PieceKind::Rook, PieceKind::Queen] {
+            for sq in board.pieces[kind.index()] & white {
+                let attacks = match kind {
+                    PieceKind::Knight => t.knight_attacks(sq),
+                    PieceKind::Bishop => t.bishop_attacks(sq, occ),
+                    PieceKind::Rook => t.rook_attacks(sq, occ),
+                    PieceKind::Queen => t.queen_attacks(sq, occ),
+                    _ => Bitboard(0),
+                };
+                for target_sq in attacks & black {
+                    if let Some(target) = board.piece_at(target_sq) {
+                        w_threats += params.piece_values[target.kind.index()];
+                    }
+                }
+            }
+        }
+
+        // Black pieces threatening White pieces
+        for kind in [PieceKind::Knight, PieceKind::Bishop, PieceKind::Rook, PieceKind::Queen] {
+            for sq in board.pieces[kind.index()] & black {
+                let attacks = match kind {
+                    PieceKind::Knight => t.knight_attacks(sq),
+                    PieceKind::Bishop => t.bishop_attacks(sq, occ),
+                    PieceKind::Rook => t.rook_attacks(sq, occ),
+                    PieceKind::Queen => t.queen_attacks(sq, occ),
+                    _ => Bitboard(0),
+                };
+                for target_sq in attacks & white {
+                    if let Some(target) = board.piece_at(target_sq) {
+                        b_threats += params.piece_values[target.kind.index()];
+                    }
+                }
+            }
+        }
+
+        score += (w_threats - b_threats) * params.flip_balance_weight / 100;
     }
 
     // Return from side-to-move perspective

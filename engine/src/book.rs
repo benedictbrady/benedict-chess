@@ -85,6 +85,27 @@ const BOOK_DATA: &[(u64, &str)] = &[
     // === 1. e3 e6 2. Qe2 Bb4 — Black trap lines ===
     (0x04199ef57ce902f6, "d2d1q"),  // 3. Qa6 → d1=Q (mate)
     (0xbcb6f1e60aa4ff3c, "d2d1q"), // 3. Qf3 → d1=Q (mate)
+
+    // === Extended: 1. e3 e6 2. Qe2 b6 3. Qb5 Bb4 line ===
+    (0x06a10416132dad55, "g1f3"),   // 3. Qb5 Bb4 → 4. Nf3
+    (0x196e27a884cbf4f6, "d2d1q"), // 4. Qa4 (after Bb4) → d1=Q (mate)
+
+    // === Extended: 1. e3 e6 2. Qe2 — more Black responses ===
+    (0xbc2af087546476e8, "e2f3"),   // 2...Qf6 → 3. Qf3 (mate)
+    (0x624620e2bf3df8e0, "e2a6"),   // 2...Bd6 → 3. Qa6
+    (0xef42a7c15b038901, "e2h5"),   // 2...Bc5 → 3. Qh5
+    (0x8378b9a046058f02, "b1c3"),   // 2...Ne7 → 3. Nc3
+
+    // === Extended: 1. e3 e6 2. Qe2 Bb4 3. Qd3 — more Black 3rd moves ===
+    (0x2b1b11184267d05d, "d3g6"),   // 3. Qd3 Nf6 → 4. Qg6 (mate)
+    (0x2364022d655b45ae, "d3b5"),   // 3. Qd3 d5 → 4. Qb5 (mate)
+    (0xf8aa52919669e923, "a2a3"),   // 3. Qd3 a5 → 4. a3
+    (0xd68503b7e279525c, "b1c3"),   // 3. Qd3 h6 → 4. Nc3 (mate)
+
+    // === Extended: 1. e3 e5 2. Qg4 Qe7 3. Qa4 — Black's 3rd ===
+    (0x749a64ca10aae61c, "a4h4"),   // 3. Qa4 Kd8 → 4. Qh4
+    (0x2832ebbbc51bc49b, "d7d8q"),  // 3. Qa4 Nc6 → d8=Q (mate)
+    (0x7567e191794dd7f6, "a4d7"),   // 3. Qa4 d6 → 4. Qd7 (mate)
 ];
 
 static BOOK: OnceLock<HashMap<u64, Move>> = OnceLock::new();
