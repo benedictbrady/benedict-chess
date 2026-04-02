@@ -195,9 +195,12 @@ impl ThreadSearcher {
     }
 
     fn is_repetition(&self, hash: u64) -> bool {
-        self.position_history[..self.game_history_len]
-            .iter()
-            .any(|&h| h == hash)
+        // Check game history AND search-tree positions, but exclude
+        // the last entry (which is the current position itself, just pushed).
+        // This detects cycles within the search tree (e.g., queen chasing
+        // king between two squares) while avoiding false self-matches.
+        let len = self.position_history.len().saturating_sub(1);
+        self.position_history[..len].iter().any(|&h| h == hash)
     }
 
     fn alpha_beta(
