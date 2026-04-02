@@ -142,67 +142,23 @@ fn init_pawn_attacks() -> [[Bitboard; 64]; 2] {
 }
 
 // --- Magic Bitboards ---
+// Magics are found at init time via trial and error with a seeded PRNG.
 
-// Well-known magic numbers for rooks (from public domain sources)
-const ROOK_MAGICS_RAW: [u64; 64] = [
-    0x0080001020400080, 0x0040001000200040, 0x0080081000200080, 0x0080040800100080,
-    0x0080020400080080, 0x0080010200040080, 0x0080008001000200, 0x0080002040800100,
-    0x0000800020400080, 0x0000400020005000, 0x0000801000200080, 0x0000800800100080,
-    0x0000800400080080, 0x0000800200040080, 0x0000800100020080, 0x0000800040800100,
-    0x0000208000400080, 0x0000404000201000, 0x0000808010002000, 0x0000808008001000,
-    0x0000808004000800, 0x0000808002000400, 0x0000010100020004, 0x0000020000408104,
-    0x0000208080004000, 0x0000200040005000, 0x0000100080200080, 0x0000080080100080,
-    0x0000040080080080, 0x0000020080040080, 0x0000010080800200, 0x0000800080004100,
-    0x0000204000800080, 0x0000200080400080, 0x0000100080200080, 0x0000080080100080,
-    0x0000040080080080, 0x0000020080040080, 0x0000010080020080, 0x0000000080804100,
-    0x0000804000800080, 0x0000200080400080, 0x0000100080200080, 0x0000080080100080,
-    0x0000040080080080, 0x0000020080040080, 0x0000010080020080, 0x0000020080800400,
-    0x0000800A00800400, 0x0000200080400200, 0x0000100080200100, 0x0000080080100080,
-    0x0000040080080080, 0x0000020080040080, 0x0000010080020080, 0x0000800400800800,
-    0x0000800020400100, 0x0000400020005100, 0x0000200810002100, 0x0000100080100081,
-    0x0000080040080041, 0x0000020040020021, 0x0000010082000401, 0x0000800C20400100,
-];
+struct Rng(u64);
 
-const BISHOP_MAGICS_RAW: [u64; 64] = [
-    0x0002020202020200, 0x0002020202020000, 0x0004010202000000, 0x0004040080000000,
-    0x0001104000000000, 0x0000821040000000, 0x0000410410400000, 0x0000104104104000,
-    0x0000040404040400, 0x0000020202020200, 0x0000040102020000, 0x0000040400800000,
-    0x0000011040000000, 0x0000008210400000, 0x0000004104104000, 0x0000002082082000,
-    0x0004000808080800, 0x0002000404040400, 0x0001000202020200, 0x0000800802004000,
-    0x0000800400A00000, 0x0000200100884000, 0x0000400082082000, 0x0000200041041000,
-    0x0002080010101000, 0x0001040008080800, 0x0000208004010400, 0x0000404004010200,
-    0x0000840000802000, 0x0000404002011000, 0x0000808001041000, 0x0000404000820800,
-    0x0001041000202000, 0x0000820800101000, 0x0000104400080800, 0x0000020080080080,
-    0x0000404040040100, 0x0000808100020100, 0x0001010100020800, 0x0000808080010400,
-    0x0000820820004000, 0x0000410410002000, 0x0000082088001000, 0x0000002011000800,
-    0x0000080100400400, 0x0001010101000200, 0x0002020202000400, 0x0001010101000200,
-    0x0000410410400000, 0x0000208208200000, 0x0000002084100000, 0x0000000020880000,
-    0x0000001002020000, 0x0000040408020000, 0x0004040404040000, 0x0002020202020000,
-    0x0000104104104000, 0x0000002082082000, 0x0000000020841000, 0x0000000000208800,
-    0x0000000010020200, 0x0000000404080200, 0x0000040404040400, 0x0002020202020200,
-];
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
 
-const ROOK_BITS: [u8; 64] = [
-    12, 11, 11, 11, 11, 11, 11, 12,
-    11, 10, 10, 10, 10, 10, 10, 11,
-    11, 10, 10, 10, 10, 10, 10, 11,
-    11, 10, 10, 10, 10, 10, 10, 11,
-    11, 10, 10, 10, 10, 10, 10, 11,
-    11, 10, 10, 10, 10, 10, 10, 11,
-    11, 10, 10, 10, 10, 10, 10, 11,
-    12, 11, 11, 11, 11, 11, 11, 12,
-];
-
-const BISHOP_BITS: [u8; 64] = [
-    6, 5, 5, 5, 5, 5, 5, 6,
-    5, 5, 5, 5, 5, 5, 5, 5,
-    5, 5, 7, 7, 7, 7, 5, 5,
-    5, 5, 7, 9, 9, 7, 5, 5,
-    5, 5, 7, 9, 9, 7, 5, 5,
-    5, 5, 7, 7, 7, 7, 5, 5,
-    5, 5, 5, 5, 5, 5, 5, 5,
-    6, 5, 5, 5, 5, 5, 5, 6,
-];
+    /// Sparse random number (good for magic candidates)
+    fn sparse(&mut self) -> u64 {
+        self.next() & self.next() & self.next()
+    }
+}
 
 fn rook_mask(sq: u8) -> Bitboard {
     let rank = sq / 8;
@@ -296,6 +252,47 @@ fn enumerate_subsets(mask: Bitboard) -> Vec<Bitboard> {
     subsets
 }
 
+/// Find a working magic number for a single square.
+fn find_magic(
+    sq: u8,
+    mask: Bitboard,
+    bits: u8,
+    attacks_fn: fn(u8, Bitboard) -> Bitboard,
+    rng: &mut Rng,
+) -> (u64, Vec<Bitboard>) {
+    let shift = 64 - bits;
+    let size = 1usize << bits;
+    let subsets = enumerate_subsets(mask);
+
+    // Precompute reference attacks for each subset
+    let reference: Vec<Bitboard> = subsets.iter().map(|s| attacks_fn(sq, *s)).collect();
+
+    loop {
+        let magic = rng.sparse();
+        if ((mask.0.wrapping_mul(magic)) >> 56).count_ones() < 6 {
+            continue; // skip bad candidates early
+        }
+
+        let mut table = vec![Bitboard::EMPTY; size];
+        let mut ok = true;
+
+        for (i, subset) in subsets.iter().enumerate() {
+            let idx = (subset.0.wrapping_mul(magic) >> shift) as usize;
+            let entry = &mut table[idx];
+            if entry.is_empty() {
+                *entry = reference[i];
+            } else if *entry != reference[i] {
+                ok = false;
+                break;
+            }
+        }
+
+        if ok {
+            return (magic, table);
+        }
+    }
+}
+
 fn init_rook_magics() -> ([Magic; 64], Vec<Bitboard>) {
     let mut magics: [Magic; 64] = std::array::from_fn(|_| Magic {
         mask: Bitboard::EMPTY,
@@ -304,38 +301,18 @@ fn init_rook_magics() -> ([Magic; 64], Vec<Bitboard>) {
         offset: 0,
     });
     let mut table = Vec::new();
+    let mut rng = Rng(0xDEADBEEF12345678);
 
     for sq in 0..64u8 {
         let mask = rook_mask(sq);
-        let bits = ROOK_BITS[sq as usize];
+        let bits = mask.popcount() as u8;
         let shift = 64 - bits;
-        let size = 1usize << bits;
         let offset = table.len();
 
-        table.resize(offset + size, Bitboard::EMPTY);
+        let (magic, sq_table) = find_magic(sq, mask, bits, rook_attacks_slow, &mut rng);
+        table.extend_from_slice(&sq_table);
 
-        let subsets = enumerate_subsets(mask);
-        let magic_num = ROOK_MAGICS_RAW[sq as usize];
-
-        for subset in &subsets {
-            let attacks = rook_attacks_slow(sq, *subset);
-            let idx = (subset.0.wrapping_mul(magic_num) >> shift) as usize;
-            let entry = &mut table[offset + idx];
-            if entry.is_empty() || *entry == attacks {
-                *entry = attacks;
-            } else {
-                // Magic collision -- this shouldn't happen with correct magics
-                // Fall back to plain computation (will be slow but correct)
-                *entry = attacks;
-            }
-        }
-
-        magics[sq as usize] = Magic {
-            mask,
-            magic: magic_num,
-            shift,
-            offset,
-        };
+        magics[sq as usize] = Magic { mask, magic, shift, offset };
     }
 
     (magics, table)
@@ -349,36 +326,18 @@ fn init_bishop_magics() -> ([Magic; 64], Vec<Bitboard>) {
         offset: 0,
     });
     let mut table = Vec::new();
+    let mut rng = Rng(0xCAFEBABE87654321);
 
     for sq in 0..64u8 {
         let mask = bishop_mask(sq);
-        let bits = BISHOP_BITS[sq as usize];
+        let bits = mask.popcount() as u8;
         let shift = 64 - bits;
-        let size = 1usize << bits;
         let offset = table.len();
 
-        table.resize(offset + size, Bitboard::EMPTY);
+        let (magic, sq_table) = find_magic(sq, mask, bits, bishop_attacks_slow, &mut rng);
+        table.extend_from_slice(&sq_table);
 
-        let subsets = enumerate_subsets(mask);
-        let magic_num = BISHOP_MAGICS_RAW[sq as usize];
-
-        for subset in &subsets {
-            let attacks = bishop_attacks_slow(sq, *subset);
-            let idx = (subset.0.wrapping_mul(magic_num) >> shift) as usize;
-            let entry = &mut table[offset + idx];
-            if entry.is_empty() || *entry == attacks {
-                *entry = attacks;
-            } else {
-                *entry = attacks;
-            }
-        }
-
-        magics[sq as usize] = Magic {
-            mask,
-            magic: magic_num,
-            shift,
-            offset,
-        };
+        magics[sq as usize] = Magic { mask, magic, shift, offset };
     }
 
     (magics, table)
@@ -480,5 +439,74 @@ mod tests {
         let e4 = Square::from_file_rank(4, 3);
         let attacks = t.queen_attacks(e4, Bitboard::EMPTY);
         assert_eq!(attacks.popcount(), 27); // 14 rook + 13 bishop
+    }
+}
+
+#[cfg(test)]
+mod magic_validation {
+    use super::*;
+
+    #[test]
+    fn test_rook_g5_blocked_by_g2() {
+        let t = tables();
+        // g5 = file 6, rank 4 = index 38
+        let g5 = Square::from_file_rank(6, 4);
+        let g2 = Square::from_file_rank(6, 1);
+        let g1 = Square::from_file_rank(6, 0);
+
+        // Occupancy with piece on g2
+        let occ = Bitboard::from_square(g2) | Bitboard::from_square(g5);
+        let attacks = t.rook_attacks(g5, occ);
+
+        // g2 should be in the attack set (it's the blocker)
+        assert!(attacks.contains(g2), "rook on g5 should attack g2");
+        // g1 should NOT be in the attack set (blocked by g2)
+        assert!(!attacks.contains(g1), "rook on g5 should NOT attack g1 when g2 is occupied");
+    }
+
+    #[test]
+    fn validate_all_rook_magics() {
+        let t = tables();
+        let mut errors = 0;
+        for sq in 0..64u8 {
+            let mask = rook_mask(sq);
+            let subsets = enumerate_subsets(mask);
+            for subset in &subsets {
+                let expected = rook_attacks_slow(sq, *subset);
+                let occ = *subset | Bitboard::from_square(Square(sq));
+                let got = t.rook_attacks(Square(sq), occ);
+                if expected != got {
+                    errors += 1;
+                    if errors <= 5 {
+                        eprintln!("Rook magic WRONG for sq={}, subset={:#018x}: expected={:#018x}, got={:#018x}",
+                            sq, subset.0, expected.0, got.0);
+                    }
+                }
+            }
+        }
+        assert_eq!(errors, 0, "{} rook magic collisions detected", errors);
+    }
+
+    #[test]
+    fn validate_all_bishop_magics() {
+        let t = tables();
+        let mut errors = 0;
+        for sq in 0..64u8 {
+            let mask = bishop_mask(sq);
+            let subsets = enumerate_subsets(mask);
+            for subset in &subsets {
+                let expected = bishop_attacks_slow(sq, *subset);
+                let occ = *subset | Bitboard::from_square(Square(sq));
+                let got = t.bishop_attacks(Square(sq), occ);
+                if expected != got {
+                    errors += 1;
+                    if errors <= 5 {
+                        eprintln!("Bishop magic WRONG for sq={}, subset={:#018x}: expected={:#018x}, got={:#018x}",
+                            sq, subset.0, expected.0, got.0);
+                    }
+                }
+            }
+        }
+        assert_eq!(errors, 0, "{} bishop magic collisions detected", errors);
     }
 }
