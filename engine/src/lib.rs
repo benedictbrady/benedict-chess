@@ -10,3 +10,5 @@ pub mod tt;
 pub mod types;
 pub mod uci;
 pub mod zobrist;
+
+mod flip_tests;
