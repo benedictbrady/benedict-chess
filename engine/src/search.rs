@@ -4,6 +4,8 @@ use crate::movegen::generate_moves;
 use crate::moves::{Move, MoveList};
 use crate::tt::{Bound, TranspositionTable};
 use crate::types::PieceKind;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub const MATE_SCORE: i32 = 100_000;
@@ -17,8 +19,25 @@ pub struct SearchInfo {
     pub pv: Vec<Move>,
 }
 
-pub struct Searcher {
+/// State shared across all search threads: the transposition table and stop flag.
+pub struct SharedSearch {
     pub tt: TranspositionTable,
+    pub stop_flag: AtomicBool,
+}
+
+impl SharedSearch {
+    pub fn new(tt_size_mb: usize) -> Self {
+        SharedSearch {
+            tt: TranspositionTable::new(tt_size_mb),
+            stop_flag: AtomicBool::new(false),
+        }
+    }
+}
+
+/// Per-thread search state. Each thread gets its own ThreadSearcher
+/// but shares a single TranspositionTable via Arc<SharedSearch>.
+pub struct ThreadSearcher {
+    pub shared: Arc<SharedSearch>,
     pub eval_params: EvalParams,
     pub silent: bool,
     nodes: u64,
@@ -34,10 +53,10 @@ pub struct Searcher {
     move_scores: [i32; 256],
 }
 
-impl Searcher {
-    pub fn new(tt_size_mb: usize) -> Self {
-        Searcher {
-            tt: TranspositionTable::new(tt_size_mb),
+impl ThreadSearcher {
+    pub fn new(shared: Arc<SharedSearch>) -> Self {
+        ThreadSearcher {
+            shared,
             eval_params: EvalParams::default(),
             silent: false,
             nodes: 0,
@@ -54,8 +73,8 @@ impl Searcher {
         }
     }
 
-    pub fn with_params(tt_size_mb: usize, eval_params: EvalParams) -> Self {
-        let mut s = Self::new(tt_size_mb);
+    pub fn with_params(shared: Arc<SharedSearch>, eval_params: EvalParams) -> Self {
+        let mut s = Self::new(shared);
         s.eval_params = eval_params;
         s
     }
@@ -71,18 +90,16 @@ impl Searcher {
         self.start_time = Instant::now();
         self.time_limit = time_limit;
         self.stopped = false;
-        self.tt.new_generation();
 
         let mut best_move = Move::NULL;
         let mut best_score = 0;
         let mut best_pv = Vec::new();
 
-        let mut asp_window = 50; // aspiration window half-width
+        let mut asp_window = 50;
 
         for depth in 1..=max_depth {
             self.pv_length[0] = 0;
 
-            // Aspiration windows: narrow search around previous score
             let (mut alpha, mut beta) = if depth >= 4 {
                 (best_score - asp_window, best_score + asp_window)
             } else {
@@ -95,7 +112,6 @@ impl Searcher {
                 if self.stopped {
                     break;
                 }
-                // Widen window if score fell outside
                 if score <= alpha {
                     alpha = -MATE_SCORE - 1;
                     asp_window *= 2;
@@ -103,7 +119,7 @@ impl Searcher {
                     beta = MATE_SCORE + 1;
                     asp_window *= 2;
                 } else {
-                    asp_window = 50; // reset for next depth
+                    asp_window = 50;
                     break;
                 }
             }
@@ -125,7 +141,6 @@ impl Searcher {
                 0
             };
 
-            // Print UCI info
             let pv_str: String = best_pv.iter().map(|m| m.to_uci()).collect::<Vec<_>>().join(" ");
             let score_str = if score.abs() >= MATE_SCORE - MAX_PLY as i32 {
                 let mate_in = if score > 0 {
@@ -162,6 +177,11 @@ impl Searcher {
 
     fn check_time(&mut self) {
         if self.nodes & 4095 == 0 {
+            // Check external stop flag
+            if self.shared.stop_flag.load(Ordering::Relaxed) {
+                self.stopped = true;
+                return;
+            }
             if let Some(limit) = self.time_limit {
                 if self.start_time.elapsed() >= limit {
                     self.stopped = true;
@@ -171,9 +191,6 @@ impl Searcher {
     }
 
     fn is_repetition(&self, hash: u64) -> bool {
-        // Check only the game history (not the search stack) for repetitions.
-        // A position is a repetition if it appeared at least once before in the game.
-        // The game_history_len tracks where the game history ends.
         self.position_history[..self.game_history_len]
             .iter()
             .any(|&h| h == hash)
@@ -194,14 +211,13 @@ impl Searcher {
 
         self.pv_length[ply] = 0;
 
-        // Repetition detection
         if ply > 0 && self.is_repetition(board.hash) {
             return 0;
         }
 
         // Probe TT
         let mut tt_move = Move::NULL;
-        if let Some(entry) = self.tt.probe(board.hash) {
+        if let Some(entry) = self.shared.tt.probe(board.hash) {
             tt_move = entry.best_move;
             if entry.depth as i32 >= depth {
                 let tt_score = entry.score as i32;
@@ -211,7 +227,6 @@ impl Searcher {
                     Bound::Upper => tt_score <= alpha,
                 };
                 if can_cutoff {
-                    // Set PV from TT move so the caller can extract it
                     if !tt_move.is_null() {
                         self.pv_table[ply][0] = tt_move;
                         self.pv_length[ply] = 1;
@@ -221,7 +236,6 @@ impl Searcher {
             }
         }
 
-        // Leaf node
         if depth <= 0 {
             return self.quiescence(board, alpha, beta, ply);
         }
@@ -230,11 +244,9 @@ impl Searcher {
         generate_moves(board, &mut moves);
 
         if moves.is_empty() {
-            // No legal moves — in Benedict chess this is extremely rare
-            return 0; // draw
+            return 0;
         }
 
-        // Move ordering
         self.score_moves(board, &mut moves, tt_move, ply);
 
         let mut best_move = Move::NULL;
@@ -242,34 +254,29 @@ impl Searcher {
         let mut bound = Bound::Upper;
 
         for i in 0..moves.len() {
-            // Selection sort: pick best move
             self.pick_move(&mut moves, i);
             let m = moves.get(i);
 
             let undo = board.make_move(m);
             self.nodes += 1;
 
-            // Check if this flipped the enemy king
             let them = board.side_to_move;
             if board.king_flipped(&undo, them) {
                 board.unmake_move(m, &undo);
                 let score = MATE_SCORE - ply as i32;
-                self.tt.store(board.hash, m, score, depth, Bound::Exact);
+                self.shared.tt.store(board.hash, m, score, depth, Bound::Exact);
                 self.pv_table[ply][0] = m;
                 self.pv_length[ply] = 1;
                 return score;
             }
 
-            // Late Move Reductions: search later moves at reduced depth
             let mut search_depth = depth - 1;
             if i >= 4 && depth >= 3 && !m.is_promotion() && undo.flipped.is_empty() {
-                // Reduce by 1 for quiet late moves
                 search_depth -= 1;
             }
 
             let mut score = -self.alpha_beta(board, search_depth, -beta, -alpha, ply + 1);
 
-            // Re-search at full depth if reduced search improved alpha
             if search_depth < depth - 1 && score > alpha {
                 score = -self.alpha_beta(board, depth - 1, -beta, -alpha, ply + 1);
             }
@@ -288,7 +295,6 @@ impl Searcher {
                     alpha = score;
                     bound = Bound::Exact;
 
-                    // Update PV
                     self.pv_table[ply][0] = m;
                     if ply + 1 < MAX_PLY {
                         for j in 0..self.pv_length[ply + 1] {
@@ -300,13 +306,11 @@ impl Searcher {
                     if score >= beta {
                         bound = Bound::Lower;
 
-                        // Store killer
                         let piece = board.piece_at(m.from_sq());
                         if piece.is_some() {
                             self.killers[ply][1] = self.killers[ply][0];
                             self.killers[ply][0] = m;
 
-                            // History heuristic
                             if let Some(p) = piece {
                                 let h = &mut self.history[p.color.index()][p.kind.index()]
                                     [m.to_sq().index()];
@@ -320,7 +324,7 @@ impl Searcher {
         }
 
         if !best_move.is_null() {
-            self.tt.store(board.hash, best_move, best_score, depth, bound);
+            self.shared.tt.store(board.hash, best_move, best_score, depth, bound);
         }
 
         best_score
@@ -362,17 +366,15 @@ impl Searcher {
         let mut score = 0i32;
 
         if let Some(piece) = board.piece_at(m.from_sq()) {
-            // Killer moves
             if self.killers[ply][0] == m {
                 score += 900_000;
             } else if self.killers[ply][1] == m {
                 score += 800_000;
             }
 
-            // Estimate flip value: what enemy pieces would this move attack?
             let t = crate::tables::tables();
             let to = m.to_sq();
-            let occ = board.occupied; // approximate — piece hasn't moved yet
+            let occ = board.occupied;
             let enemy = board.colors[piece.color.flip().index()];
 
             let kind = if m.is_promotion() {
@@ -391,7 +393,6 @@ impl Searcher {
             };
 
             let flipped = attacks & enemy;
-            // Score by value of pieces that would be flipped
             for sq in flipped {
                 if let Some(target) = board.piece_at(sq) {
                     score += match target.kind {
@@ -405,10 +406,117 @@ impl Searcher {
                 }
             }
 
-            // History heuristic
             score += self.history[piece.color.index()][piece.kind.index()][m.to_sq().index()];
         }
 
         score
+    }
+}
+
+/// Run a Lazy SMP search: spawn `num_threads` threads all searching
+/// the same position, sharing a transposition table.
+/// The main thread (thread 0) prints info lines; helpers are silent.
+/// Returns the main thread's result.
+pub fn search_smp(
+    shared: &Arc<SharedSearch>,
+    board: &Board,
+    max_depth: i32,
+    time_limit: Option<Duration>,
+    num_threads: usize,
+    eval_params: &EvalParams,
+    position_history: Vec<u64>,
+    silent: bool,
+) -> SearchInfo {
+    shared.stop_flag.store(false, Ordering::Relaxed);
+    shared.tt.new_generation();
+
+    let num_threads = num_threads.max(1);
+
+    if num_threads == 1 {
+        // Single-threaded fast path — no thread spawning overhead
+        let mut searcher = ThreadSearcher::with_params(Arc::clone(shared), eval_params.clone());
+        searcher.silent = silent;
+        searcher.set_position_history(position_history);
+        return searcher.search(&mut board.clone(), max_depth, time_limit);
+    }
+
+    // Spawn helper threads (1..N-1)
+    let mut handles = Vec::with_capacity(num_threads - 1);
+    for _thread_id in 1..num_threads {
+        let shared = Arc::clone(shared);
+        let eval_params = eval_params.clone();
+        let mut board = board.clone();
+        let position_history = position_history.clone();
+
+        handles.push(std::thread::spawn(move || {
+            let mut searcher = ThreadSearcher::with_params(shared, eval_params);
+            searcher.silent = true; // only main thread prints
+            searcher.set_position_history(position_history);
+            searcher.search(&mut board, max_depth, time_limit)
+        }));
+    }
+
+    // Main thread search
+    let mut main_searcher = ThreadSearcher::with_params(Arc::clone(shared), eval_params.clone());
+    main_searcher.silent = silent;
+    main_searcher.set_position_history(position_history);
+    let main_result = main_searcher.search(&mut board.clone(), max_depth, time_limit);
+
+    // Signal helpers to stop and join
+    shared.stop_flag.store(true, Ordering::Relaxed);
+    let mut total_nodes = main_result.nodes;
+    for handle in handles {
+        if let Ok(info) = handle.join() {
+            total_nodes += info.nodes;
+        }
+    }
+
+    SearchInfo {
+        nodes: total_nodes,
+        ..main_result
+    }
+}
+
+// ---- Backward-compatible Searcher wrapper ----
+// Keeps the old API working for match_runner and simple use cases.
+
+pub struct Searcher {
+    pub shared: Arc<SharedSearch>,
+    pub eval_params: EvalParams,
+    pub silent: bool,
+    position_history: Vec<u64>,
+}
+
+impl Searcher {
+    pub fn new(tt_size_mb: usize) -> Self {
+        Searcher {
+            shared: Arc::new(SharedSearch::new(tt_size_mb)),
+            eval_params: EvalParams::default(),
+            silent: false,
+            position_history: Vec::new(),
+        }
+    }
+
+    pub fn with_params(tt_size_mb: usize, eval_params: EvalParams) -> Self {
+        let mut s = Self::new(tt_size_mb);
+        s.eval_params = eval_params;
+        s
+    }
+
+    pub fn set_position_history(&mut self, hashes: Vec<u64>) {
+        self.position_history = hashes;
+    }
+
+    /// Convenience accessor so existing code that does `searcher.tt.clear()` still works.
+    pub fn tt(&self) -> &TranspositionTable {
+        &self.shared.tt
+    }
+
+    pub fn search(&mut self, board: &mut Board, max_depth: i32, time_limit: Option<Duration>) -> SearchInfo {
+        self.shared.tt.new_generation();
+        let mut searcher = ThreadSearcher::with_params(Arc::clone(&self.shared), self.eval_params.clone());
+        searcher.silent = self.silent;
+        searcher.set_position_history(self.position_history.clone());
+        searcher.search(board, max_depth, time_limit)
     }
 }
