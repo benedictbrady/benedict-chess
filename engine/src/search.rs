@@ -250,11 +250,7 @@ impl ThreadSearcher {
         // Static eval (cached for pruning decisions)
         let static_eval = evaluate_with_params(board, &self.eval_params);
 
-        // Note: Null Move Pruning and Reverse Futility Pruning were tested
-        // and found to hurt in Benedict chess — the game is too tactical for
-        // forward pruning. Even reaching +2-5 depth with pruning loses games
-        // because the eval at leaf nodes is unreliable.
-        let _ = static_eval; // computed for potential future use
+        let _ = static_eval;
 
         let mut moves = MoveList::new();
         generate_moves(board, &mut moves);
