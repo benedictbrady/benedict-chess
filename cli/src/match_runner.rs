@@ -370,9 +370,65 @@ fn main() {
             candidate.king_shield_bonus = 10;
             run_match("Tempo15+KS10", &candidate, "Baseline", &baseline, num_games, time_per_move);
         }
+        // === Zero-cost tuning experiments ===
+        "benedict_values" => {
+            // Benedict-specific piece values: knights worth more (can't be blocked),
+            // queen worth even more (dominant piece), pawns worth less (pure conversion tool)
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.piece_values = [80, 350, 330, 500, 1000, 20000];
+            run_match("BenedictValues", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "no_pst" => {
+            // Disable PSTs entirely — standard chess PSTs may mislead Benedict eval
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.pst_weight = 0;
+            run_match("NoPST", &candidate, "Baseline", &baseline, num_games, time_per_move);
+        }
+        "qt_20" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.queen_threat_bonus = 20;
+            run_match("QT(20)", &candidate, "Baseline(QT15)", &baseline, num_games, time_per_move);
+        }
+        "qt_25" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.queen_threat_bonus = 25;
+            run_match("QT(25)", &candidate, "Baseline(QT15)", &baseline, num_games, time_per_move);
+        }
+        "kd_40" => {
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.king_danger_weight = 40;
+            run_match("KD(40)", &candidate, "Baseline(KD30)", &baseline, num_games, time_per_move);
+        }
+        "pst_50" => {
+            // Half-weight PSTs — less influence from standard chess positioning
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.pst_weight = 50;
+            run_match("PST(50)", &candidate, "Baseline(PST100)", &baseline, num_games, time_per_move);
+        }
+        "knight_val" => {
+            // Knights are uniquely strong in Benedict: can't be blocked, flip at distance
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.piece_values[1] = 380; // Knight: 320 -> 380
+            run_match("Knight(380)", &candidate, "Baseline(320)", &baseline, num_games, time_per_move);
+        }
+        "queen_val" => {
+            // Queen is the dominant piece in Benedict
+            let baseline = EvalParams::default();
+            let mut candidate = baseline.clone();
+            candidate.piece_values[4] = 1100; // Queen: 900 -> 1100
+            run_match("Queen(1100)", &candidate, "Baseline(900)", &baseline, num_games, time_per_move);
+        }
         other => {
             eprintln!("Unknown test: {}", other);
-            eprintln!("Available: baseline, pawn_advance, flip_balance, mega, king_danger, all");
+            eprintln!("Available: baseline, pawn_advance, flip_balance, mega, king_danger,");
+            eprintln!("  benedict_values, no_pst, qt_20, qt_25, kd_40, pst_50, knight_val, queen_val");
             std::process::exit(1);
         }
     }

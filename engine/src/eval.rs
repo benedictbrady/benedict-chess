@@ -34,7 +34,7 @@ impl Default for EvalParams {
     fn default() -> Self {
         EvalParams {
             piece_values: [100, 320, 330, 500, 900, 20000],
-            pst_weight: 100, // percent — 100 = full PST, 0 = none
+            pst_weight: 100,
             queen_threat_bonus: 15,
             knight_threat_bonus: 0,
             mobility_weight: 0,
