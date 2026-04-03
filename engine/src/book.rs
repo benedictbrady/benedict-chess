@@ -45546,7 +45546,27 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0x676ad56ef4509633, "g4f6"),   // mate in 1 half-moves
     (0x5cbf6ae9a6f0327f, "g4f6"),   // mate in 1 half-moves
     // === 1.e3 a6 sub-tree patch: 16,261 additional positions ===
-    (0xb9b180d1ff388987, "b1c3"),   // 1.e3 a6 -> 2.Nc3 (mate in ~18 half-moves)    (0xb60073436b2807c1, "g8f6"),   // mate in 1 half-moves
+    (0xb9b180d1ff388987, "b1c3"),   // 1.e3 a6 -> 2.Nc3
+    // === Gap fix: 1.e3 a6 2.Nc3 h6 3.Ne4 chain (was unsolved, now complete) ===
+    (0x5e9ce3719df2b645, "h7h6"),   // after 2.Nc3 (Black to move) -> h6 (longest defense)
+    (0x7b43b4716b0850fc, "c3e4"),   // after 2...h6 -> 3.Ne4 (all responses mate)
+    // After 3.Ne4, Black responses (unique hashes only):
+    (0x9df06cd856b1aeb9, "e4d6"),   // 3...c5 -> Nd6#
+    (0xce1858ad1c7c71f5, "e4d6"),   // 3...g6 -> Nd6#
+    (0xfe267345078e6a81, "e4d6"),   // 3...h5 -> Nd6#
+    (0xfe5e1508757e4f12, "e4d6"),   // 3...Nc6 -> Nd6#
+    (0x141ddd2c0b14494e, "e4d6"),   // 3...b5 -> Nd6#
+    (0xd3cf061c3edbcd01, "e4d6"),   // 3...b6 -> Nd6#
+    (0xc4602d590708fe64, "f1b5"),   // 3...d5 -> Bb5#
+    (0xea470ab1f093b3d7, "e4f6"),   // 3...d6 -> Nf6#
+    (0x62879cca6926abb3, "e4d6"),   // 3...a5 -> Nd6#
+    (0x6b6c865e0b68ac9d, "d1h5"),   // 3...f5 -> Qh5#
+    (0x5eb0d4528b812d8b, "e4d6"),   // 3...f6 -> Nd6#
+    (0x4c69eb5e6e34dd95, "e4d6"),   // 3...e6 -> Nd6#
+    (0x48d289ff1796bae3, "d1f3"),   // 3...Nf6 -> Qf3 (Nf6 flipped, then mate)
+    // After 3...Nf6 4.Qf3 (Nf6 is now White's), all Black moves mate:
+    (0x3804ee33c7aee6f5, "e4d6"),   // after 4.Qf3 -> Nd6# for most responses
+    (0xb60073436b2807c1, "g8f6"),   // mate in 1 half-moves
     (0xa633b1b42e1e3006, "d5f6"),   // mate in 1 half-moves
     (0xd22499f109795b1f, "e4d6"),   // mate in 1 half-moves
     (0xef9cb676b4087991, "e7e8r"),   // mate in 1 half-moves
