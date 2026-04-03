@@ -9,10 +9,15 @@
 /// If verification passes, the book is a proven forced mate from 1.e3.
 use benedict_engine::board::Board;
 use benedict_engine::book;
+use benedict_engine::fen;
 use benedict_engine::movegen::generate_moves;
 use benedict_engine::moves::{Move, MoveList};
+use benedict_engine::search::{SharedSearch, ThreadSearcher};
+use benedict_engine::eval::EvalParams;
 use benedict_engine::types::Color;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::Duration;
 
 struct Verifier {
     verified: HashSet<u64>,
@@ -20,16 +25,25 @@ struct Verifier {
     positions_checked: u64,
     mates_found: u64,
     max_depth_seen: usize,
+    /// New entries discovered by the engine during verification
+    fixes: Vec<(u64, String)>,  // (hash, uci_move)
+    shared: Arc<SharedSearch>,
+    params: EvalParams,
+    fix_mode: bool,
 }
 
 impl Verifier {
-    fn new() -> Self {
+    fn new(fix_mode: bool) -> Self {
         Verifier {
             verified: HashSet::new(),
             failed: Vec::new(),
             positions_checked: 0,
             mates_found: 0,
             max_depth_seen: 0,
+            fixes: Vec::new(),
+            shared: Arc::new(SharedSearch::new(256)),
+            params: EvalParams::default(),
+            fix_mode,
         }
     }
 
@@ -68,12 +82,38 @@ impl Verifier {
 
         if is_white {
             // WHITE TO MOVE: book must have a move, and it must lead to a verified position or mate
-            let book_move = book::probe(board.hash);
+            let book_move = book::probe(board.hash).or_else(|| {
+                // Check if we already found a fix for this hash
+                self.fixes.iter().find(|(h, _)| *h == board.hash)
+                    .and_then(|(_, uci)| Move::from_uci(uci))
+            });
             if book_move.is_none() {
-                self.failed.push((board.hash, "no book entry for White position".to_string()));
-                return false;
+                if self.fix_mode {
+                    // Use engine to find the right move
+                    let mut searcher = ThreadSearcher::with_params(
+                        Arc::clone(&self.shared), self.params.clone(),
+                    );
+                    searcher.set_position_history(history.to_vec());
+                    searcher.silent = true;
+                    let info = searcher.search(board, 12, Some(Duration::from_secs(3)));
+                    if !info.best_move.is_null() {
+                        let uci = info.best_move.to_uci();
+                        eprintln!("  FIX: 0x{:016x} -> {} (depth {})", board.hash, uci, depth);
+                        self.fixes.push((board.hash, uci));
+                        // Continue verification with this move
+                    } else {
+                        self.failed.push((board.hash, "no book entry and engine failed".to_string()));
+                        return false;
+                    }
+                } else {
+                    self.failed.push((board.hash, "no book entry for White position".to_string()));
+                    return false;
+                }
             }
-            let book_move = book_move.unwrap();
+            let book_move = book_move.unwrap_or_else(|| {
+                let uci = &self.fixes.iter().rev().find(|(h, _)| *h == board.hash).unwrap().1;
+                Move::from_uci(uci).unwrap()
+            });
 
             // Verify the book move is legal
             let mut moves = MoveList::new();
@@ -167,7 +207,8 @@ impl Verifier {
 fn main() {
     benedict_engine::tables::tables();
 
-    let mut verifier = Verifier::new();
+    let fix_mode = std::env::args().any(|a| a == "--fix");
+    let mut verifier = Verifier::new(fix_mode);
     let mut board = Board::startpos();
 
     // Play 1.e3
@@ -196,12 +237,19 @@ fn main() {
     println!("Max tree depth:     {}", verifier.max_depth_seen);
     println!();
 
+    if !verifier.fixes.is_empty() {
+        println!("\nNew entries found by engine ({}):", verifier.fixes.len());
+        for (hash, uci) in &verifier.fixes {
+            println!("    (0x{:016x}, \"{}\"),", hash, uci);
+        }
+    }
+
     if result {
-        println!("PROOF COMPLETE: 1.e3 is a verified forced mate for White.");
+        println!("\nPROOF COMPLETE: 1.e3 is a verified forced mate for White.");
         println!("Every legal Black move at every reachable position has been checked.");
         println!("All paths terminate in king flip (checkmate).");
     } else {
-        println!("PROOF FAILED: {} gaps found", verifier.failed.len());
+        println!("\nPROOF FAILED: {} gaps found", verifier.failed.len());
         println!();
         for (i, (hash, reason)) in verifier.failed.iter().enumerate().take(20) {
             println!("  Gap {}: hash=0x{:016x} — {}", i + 1, hash, reason);
