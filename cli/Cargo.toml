@@ -19,5 +19,9 @@ path = "src/hash_dump.rs"
 name = "solver"
 path = "src/solver.rs"
 
+[[bin]]
+name = "patch-solver"
+path = "src/patch_solver.rs"
+
 [dependencies]
 benedict-engine = { path = "../engine" }
