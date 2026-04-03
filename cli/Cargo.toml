@@ -23,5 +23,13 @@ path = "src/solver.rs"
 name = "patch-solver"
 path = "src/patch_solver.rs"
 
+[[bin]]
+name = "verifier"
+path = "src/verifier.rs"
+
+[[bin]]
+name = "auto-patch"
+path = "src/auto_patch.rs"
+
 [dependencies]
 benedict-engine = { path = "../engine" }
