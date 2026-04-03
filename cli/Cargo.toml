@@ -15,5 +15,9 @@ path = "src/match_runner.rs"
 name = "hash-dump"
 path = "src/hash_dump.rs"
 
+[[bin]]
+name = "solver"
+path = "src/solver.rs"
+
 [dependencies]
 benedict-engine = { path = "../engine" }
