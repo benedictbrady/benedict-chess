@@ -61,7 +61,7 @@ impl Verifier {
         }
 
         // Depth limit to prevent infinite recursion from bugs
-        if depth > 60 {
+        if depth > 120 {
             self.failed.push((board.hash, format!("depth limit exceeded at depth {}", depth)));
             return false;
         }
