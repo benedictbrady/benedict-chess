@@ -138,21 +138,55 @@ impl Verifier {
                                 let bundo = board.make_move(bm);
                                 let bthem = board.side_to_move;
                                 if board.king_flipped(&bundo, bthem) {
-                                    // Black flips White's king — this White move is LOSING
+                                    // Level 1: Black flips White's king immediately
                                     board.unmake_move(bm, &bundo);
                                     black_wins = true;
                                     break;
                                 }
+                                // Level 2: check if Black can force a king flip in 2 moves
+                                // For each White response, check if ALL of them lead to Black flipping
                                 let mut w2 = MoveList::new();
                                 generate_moves(board, &mut w2);
-                                let has_mate = (0..w2.len()).any(|k| {
+                                let mut white_has_safe_response = false;
+                                let mut has_mate = false;
+                                for k in 0..w2.len() {
                                     let wm = w2.get(k);
                                     let wundo = board.make_move(wm);
                                     let wthem = board.side_to_move;
-                                    let is_m = board.king_flipped(&wundo, wthem);
+                                    if board.king_flipped(&wundo, wthem) {
+                                        // This White move flips Black's king = mate
+                                        board.unmake_move(wm, &wundo);
+                                        has_mate = true;
+                                        white_has_safe_response = true;
+                                        break;
+                                    }
+                                    // Check if ANY Black response flips White's king
+                                    let mut b2 = MoveList::new();
+                                    generate_moves(board, &mut b2);
+                                    let mut b2_wins = false;
+                                    for l in 0..b2.len() {
+                                        let bm2 = b2.get(l);
+                                        let bundo2 = board.make_move(bm2);
+                                        let bthem2 = board.side_to_move;
+                                        if board.king_flipped(&bundo2, bthem2) {
+                                            board.unmake_move(bm2, &bundo2);
+                                            b2_wins = true;
+                                            break;
+                                        }
+                                        board.unmake_move(bm2, &bundo2);
+                                    }
                                     board.unmake_move(wm, &wundo);
-                                    is_m
-                                });
+                                    if !b2_wins {
+                                        white_has_safe_response = true;
+                                        // Don't break — still need to check has_mate
+                                    }
+                                }
+                                if !white_has_safe_response {
+                                    // Black can force king flip in 2 moves from every White response
+                                    board.unmake_move(bm, &bundo);
+                                    black_wins = true;
+                                    break;
+                                }
                                 if has_mate { instant += 1; }
                                 board.unmake_move(bm, &bundo);
                             }
@@ -165,7 +199,7 @@ impl Verifier {
                         }
                     }
 
-                    // 3) Fallback to engine at depth 16 (higher than default 12)
+                    // 3) Fallback to engine — but STILL check soundness
                     if best_move.is_null() {
                         let mut searcher = ThreadSearcher::with_params(
                             Arc::clone(&self.shared), self.params.clone(),
@@ -174,7 +208,35 @@ impl Verifier {
                         searcher.silent = true;
                         let info = searcher.search(board, 20, Some(Duration::from_secs(10)));
                         if !info.best_move.is_null() {
-                            best_move = info.best_move;
+                            // Soundness check: verify Black can't immediately flip White's king
+                            let eng_move = info.best_move;
+                            let eng_legal = (0..all_moves.len())
+                                .map(|idx| all_moves.get(idx))
+                                .find(|m| m.from_sq() == eng_move.from_sq() && m.to_sq() == eng_move.to_sq());
+                            if let Some(legal_eng) = eng_legal {
+                                let eng_undo = board.make_move(legal_eng);
+                                let eng_them = board.side_to_move;
+                                let mut eng_safe = true;
+                                if !board.king_flipped(&eng_undo, eng_them) {
+                                    let mut eng_black = MoveList::new();
+                                    generate_moves(board, &mut eng_black);
+                                    for j in 0..eng_black.len() {
+                                        let bm = eng_black.get(j);
+                                        let bundo = board.make_move(bm);
+                                        let bthem = board.side_to_move;
+                                        if board.king_flipped(&bundo, bthem) {
+                                            board.unmake_move(bm, &bundo);
+                                            eng_safe = false;
+                                            break;
+                                        }
+                                        board.unmake_move(bm, &bundo);
+                                    }
+                                }
+                                board.unmake_move(legal_eng, &eng_undo);
+                                if eng_safe {
+                                    best_move = legal_eng;
+                                }
+                            }
                         }
                     }
 
@@ -187,6 +249,7 @@ impl Verifier {
                         return false;
                     }
                 } else {
+                    eprintln!("  MISSING: 0x{:016x} at depth {} (no safe move found)", board.hash, depth);
                     self.failed.push((board.hash, "no book entry for White position".to_string()));
                     return false;
                 }
