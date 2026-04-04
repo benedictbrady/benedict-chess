@@ -120,6 +120,11 @@ impl Verifier {
                                 best_move = m;
                                 break;
                             }
+                            // Skip moves that lead to a repeated position (draw)
+                            if history.iter().any(|&h| h == board.hash) {
+                                board.unmake_move(m, &undo);
+                                continue;
+                            }
                             // Count Black responses that are mate-in-1
                             // SOUNDNESS: skip this move if ANY Black response flips White's king
                             let mut black_moves = MoveList::new();
@@ -165,7 +170,7 @@ impl Verifier {
                         );
                         searcher.set_position_history(history.to_vec());
                         searcher.silent = true;
-                        let info = searcher.search(board, 16, Some(Duration::from_secs(5)));
+                        let info = searcher.search(board, 20, Some(Duration::from_secs(10)));
                         if !info.best_move.is_null() {
                             best_move = info.best_move;
                         }
@@ -251,6 +256,10 @@ impl Verifier {
                 let them = board.side_to_move;
                 if board.king_flipped(&undo, them) {
                     board.unmake_move(m, &undo);
+                    // Print the parent info for debugging
+                    eprintln!("  BAD: Black {} flips king at hash 0x{:016x} (depth {})",
+                        m.to_uci(), board.hash, depth);
+                    eprintln!("    Parent path depth: {}", depth);
                     self.failed.push((
                         board.hash,
                         format!("Black move {} flips White's king!", m.to_uci()),
