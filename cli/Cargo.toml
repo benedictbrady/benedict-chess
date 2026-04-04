@@ -39,5 +39,9 @@ path = "src/optimizer.rs"
 name = "tree-analyzer"
 path = "src/tree_analyzer.rs"
 
+[[bin]]
+name = "reachable-extractor"
+path = "src/reachable_extractor.rs"
+
 [dependencies]
 benedict-engine = { path = "../engine" }
