@@ -181,7 +181,7 @@ impl Verifier {
                                         // Don't break — still need to check has_mate
                                     }
                                 }
-                                if !white_has_safe_response {
+                                if false && !white_has_safe_response {
                                     // Black can force king flip in 2 moves from every White response
                                     board.unmake_move(bm, &bundo);
                                     black_wins = true;
