@@ -61,7 +61,7 @@ impl Verifier {
         }
 
         // Depth limit to prevent infinite recursion from bugs
-        if depth > 120 {
+        if depth > 200 {
             self.failed.push((board.hash, format!("depth limit exceeded at depth {}", depth)));
             return false;
         }
@@ -205,6 +205,13 @@ impl Verifier {
 }
 
 fn main() {
+    // Use a large stack to handle deep recursion (depth 120+)
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let handler = builder.spawn(|| real_main()).unwrap();
+    handler.join().unwrap();
+}
+
+fn real_main() {
     benedict_engine::tables::tables();
 
     let fix_mode = std::env::args().any(|a| a == "--fix");

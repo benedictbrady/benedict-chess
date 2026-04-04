@@ -98,6 +98,12 @@ impl Extractor {
 }
 
 fn main() {
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let handler = builder.spawn(|| real_main()).unwrap();
+    handler.join().unwrap();
+}
+
+fn real_main() {
     benedict_engine::tables::tables();
 
     let mut ext = Extractor::new();
@@ -120,7 +126,7 @@ fn main() {
     eprintln!("Walking game tree from 1.e3...\n");
 
     let mut history = vec![Board::startpos().hash, board.hash];
-    ext.walk(&mut board, 120, &mut history);
+    ext.walk(&mut board, 250, &mut history);
     board.unmake_move(e3_legal, &undo);
 
     eprintln!("=== STATS ===");
