@@ -121,16 +121,20 @@ impl Verifier {
                                 break;
                             }
                             // Count Black responses that are mate-in-1
+                            // SOUNDNESS: skip this move if ANY Black response flips White's king
                             let mut black_moves = MoveList::new();
                             generate_moves(board, &mut black_moves);
                             let mut instant = 0u32;
+                            let mut black_wins = false;
                             for j in 0..black_moves.len() {
                                 let bm = black_moves.get(j);
                                 let bundo = board.make_move(bm);
                                 let bthem = board.side_to_move;
                                 if board.king_flipped(&bundo, bthem) {
+                                    // Black flips White's king — this White move is LOSING
                                     board.unmake_move(bm, &bundo);
-                                    continue;
+                                    black_wins = true;
+                                    break;
                                 }
                                 let mut w2 = MoveList::new();
                                 generate_moves(board, &mut w2);
@@ -146,6 +150,7 @@ impl Verifier {
                                 board.unmake_move(bm, &bundo);
                             }
                             board.unmake_move(m, &undo);
+                            if black_wins { continue; } // Skip — Black wins
                             if instant > best_ratio {
                                 best_ratio = instant;
                                 best_move = m;
