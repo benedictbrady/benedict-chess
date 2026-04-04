@@ -113,6 +113,8 @@ impl Verifier {
                         let mut best_ratio = 0u32;
                         for i in 0..all_moves.len() {
                             let m = all_moves.get(i);
+                            // Skip bishop promotions (create vulnerabilities)
+                            if m.to_uci().ends_with('b') { continue; }
                             let undo = board.make_move(m);
                             let them = board.side_to_move;
                             if board.king_flipped(&undo, them) {
