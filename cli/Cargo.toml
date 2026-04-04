@@ -31,5 +31,9 @@ path = "src/verifier.rs"
 name = "auto-patch"
 path = "src/auto_patch.rs"
 
+[[bin]]
+name = "optimizer"
+path = "src/optimizer.rs"
+
 [dependencies]
 benedict-engine = { path = "../engine" }
