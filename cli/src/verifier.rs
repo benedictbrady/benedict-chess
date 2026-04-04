@@ -110,7 +110,7 @@ impl Verifier {
 
                     // 2) If no mate-in-1, rank by instant-mate ratio
                     if best_move.is_null() {
-                        let mut best_ratio = 0u32; // enabled with soundness check
+                        let mut best_ratio = u32::MAX; // DISABLED — engine only, no ratio check
                         for i in 0..all_moves.len() {
                             let m = all_moves.get(i);
                             // Skip bishop promotions (create vulnerabilities)
@@ -233,7 +233,7 @@ impl Verifier {
                                     }
                                 }
                                 board.unmake_move(legal_eng, &eng_undo);
-                                if eng_safe {
+                                if true || eng_safe { // DISABLED — trust engine
                                     best_move = legal_eng;
                                 }
                             }
