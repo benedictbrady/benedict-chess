@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Minimal solution book for 1.e3 — only reachable positions.
-/// Cleaned by reachable-extractor from 1552 entries.
+/// Cleaned by reachable-extractor from 1924 entries.
 const BOOK_DATA: &[(u64, &str)] = &[
     (0x3eb9976bbb8190ba, "b1c3"),   // mate in 15 half-moves
     (0x87834ea2f65f083c, "c3e4"),   // mate in 13 half-moves
@@ -38,7 +38,7 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0x5e51bb08f4abe47f, "d2d3"),   // mate in 3 half-moves
     (0x851806f7b80d1ab4, "c3e4"),   // mate in 3 half-moves
     (0x8a8400f9fb0211ae, "c3e4"),   // mate in 3 half-moves
-    (0x38a0d78a9a5fa6a4, "d2d3"),   // mate in 3 half-moves
+    (0x38a0d78a9a5fa6a4, "d1g4"),   // Qg4! reclaims Ne4 + flips c8 via open d7, Bd7# mate in 2,   // mate in 3 half-moves
     (0x6e54f833b7884cab, "f2f3"),   // mate in 3 half-moves
     (0xd2e31faee435a0f8, "d2d3"),   // mate in 3 half-moves
     (0x987ddd65481e874a, "f2f3"),   // mate in 3 half-moves
@@ -763,80 +763,7 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0xd959acb2b012fd42, "d2d3"),   // Nf6: Qg4 reclaims e4 knight + flips g7/d7,
     (0x8891b63aa1cd177d, "e4d6"),
     (0x98870c588343d1a2, "e4d6"),
-    (0x5bdd1d1dd39320fa, "e4d6"),
-    (0x4f9bc88ae85cf650, "e4f6"),
-    (0x74eee8f9ce024081, "e4d6"),
-    (0x087627f6b37f6985, "e4d6"),
-    (0xfd9e3e5db4bd8102, "e4d6"),
-    (0x6aefcc99681cc4e6, "e4d6"),
-    (0xd9efa0708bfa1aa9, "e4d6"),
-    (0xfeeacd70eea66ba1, "d1h5"),
-    (0xcb369f7c6e4feab7, "e4d6"),
-    (0x74cb7ee16017c8fa, "e4d6"),
-    (0x5b9e1383f9b2b6c9, "e4d6"),
-    (0xe1fa835e1d251780, "e4d6"),
-    (0xfa537b6b3734cf8f, "e4d6"),
-    (0xe077c1972d05f2b0, "e4d6"),
     (0x6bd85e2690b0882e, "e4d6"),
-    (0xad7e18a4766c94d3, "e4f6"),
-    (0xdd54c2d1f2587ddf, "d1g4"),
-    (0x760bcbda4fb93bb7, "g4d7"),
-    (0x624d1e4d7476ed1d, "g4d7"),
-    (0x59383e3e52285bcc, "g4d7"),
-    (0x25a0f1312f5572c8, "g4d7"),
-    (0xd048e89a28979a4f, "g4d7"),
-    (0x47391a5ef436dfab, "g4d7"),
-    (0xf43976b717d001e4, "e4d6"),
-    (0x5b5b89b1380d5aa6, "c8d7"),
-    (0xd785adacab1ed4c2, "g4d7"),
-    (0x0304441be2cea420, "g4d7"),
-    (0x9daf1de21955712e, "e4f6"),
-    (0xaed608903ca287b7, "g4d7"),
-    (0xcda11750b12fe9fd, "g4d7"),
-    (0x460e88e10c9a9363, "g4d7"),
-    (0x80a8ce63ea468f9e, "e4d6"),
-    (0x15f32e1c4e2fa49b, "g4d7"),
-    (0xe693afea3318b671, "g4d7"),
-    (0xa8a4d7816ef78aaf, "g4d7"),
-    (0x8c86438049494bc6, "g4d7"),
-    (0x568dc31976fc3511, "e4d6"),
-    (0x37af55caafc608f2, "g4e6"),
-    (0x8c9cd859e38797e0, "e4d6"),
-    (0x2f98eb074250c259, "e4f6"),
-    (0xb0a462ae9c236c5b, "e4f6"),
-    (0xbca7e5d355043f17, "d1f3"),
-    (0x74fc782aa0d05272, "e4f6"),
-    (0x60baadbd9b1f84d8, "e4f6"),
-    (0x5bcf8dcebd413209, "f5d7"),
-    (0x275742c1c03c1b0d, "e4f6"),
-    (0xd2bf5b6ac7fef38a, "e4f6"),
-    (0x45cea9ae1b5fb66e, "e4f6"),
-    (0x7b35a7e23b468307, "e4d6"),
-    (0xe417fa4b1d0c983f, "e4d6"),
-    (0x5bea1bd61354ba72, "e4f6"),
-    (0xf9441411490e2f67, "e4d6"),
-    (0xcedbe6696e666508, "e4f6"),
-    (0xd5721e5c4477bd07, "e4f6"),
-    (0xcf56a4a05e468038, "e4f6"),
-    (0x44f93b11e3f3faa6, "e4f6"),
-    (0x825f7d93052fe65b, "e4f6"),
-    (0xf275a7e6811b0f57, "f5d7"),
-    (0x2e46dfcb533b0e4e, "e4d6"),
-    (0x17049deca146cd5e, "e4f6"),
-    (0xe4641c1adc71dfb4, "e4f6"),
-    (0x8e71f070a6202203, "e4f6"),
-    (0xb67eed597f243cbd, "e4f6"),
-    (0xecfe0d03349eefbc, "e4d6"),
-    (0xcdd0c507dce3bc13, "e4f6"),
-    (0xf7be6b0e6201ae6a, "e4f6"),
-    (0xa7c26447c84dc066, "e4f6"),
-    (0xffa5c1a9213cf15b, "e4d6"),
-    (0x62da86ee9969bc3d, "e4f6"),
-    (0x3825f8dbd205bfd6, "e4d6"),
-    (0xcb45792daf32ad3c, "e4d6"),
-    (0xa1509547d563508b, "e4f6"),
-    (0x14a4eacbcf98a513, "e4f6"),
-    (0xe2f1a030afa0ce9b, "e4f6"),
     (0x94671684df558a42, "e4d6"),
     (0x8021c313e49a5ce8, "e4d6"),
     (0xc7cc2c6fbfb9c33d, "e4d6"),
