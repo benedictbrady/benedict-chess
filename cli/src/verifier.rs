@@ -61,7 +61,7 @@ impl Verifier {
         }
 
         // Depth limit to prevent infinite recursion from bugs
-        if depth > 300 {
+        if depth > 500 {
             self.failed.push((board.hash, format!("depth limit exceeded at depth {}", depth)));
             return false;
         }
@@ -206,7 +206,7 @@ impl Verifier {
 
 fn main() {
     // Use a large stack to handle deep recursion (depth 120+)
-    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let builder = std::thread::Builder::new().stack_size(128 * 1024 * 1024);
     let handler = builder.spawn(|| real_main()).unwrap();
     handler.join().unwrap();
 }
