@@ -35,5 +35,9 @@ path = "src/auto_patch.rs"
 name = "optimizer"
 path = "src/optimizer.rs"
 
+[[bin]]
+name = "tree-analyzer"
+path = "src/tree_analyzer.rs"
+
 [dependencies]
 benedict-engine = { path = "../engine" }
