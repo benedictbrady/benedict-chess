@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Minimal solution book for 1.e3 — only reachable positions.
-/// Cleaned by reachable-extractor from 1821 entries.
+/// Cleaned by reachable-extractor from 1686 entries.
 const BOOK_DATA: &[(u64, &str)] = &[
     (0x3eb9976bbb8190ba, "b1c3"),   // mate in 15 half-moves
     (0x87834ea2f65f083c, "c3e4"),   // mate in 13 half-moves
