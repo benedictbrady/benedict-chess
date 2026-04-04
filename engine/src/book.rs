@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Minimal solution book for 1.e3 — only reachable positions.
-/// Cleaned by reachable-extractor from 1871 entries.
+/// Cleaned by reachable-extractor from 1872 entries.
 const BOOK_DATA: &[(u64, &str)] = &[
     (0x3eb9976bbb8190ba, "b1c3"),   // mate in 15 half-moves
     (0x87834ea2f65f083c, "c3e4"),   // mate in 13 half-moves
@@ -960,37 +960,7 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0xb6012877346bc5aa, "e4d6"),
     (0x40c214556b42eda9, "e4d6"),
     (0xcb0d7e9e061eed9a, "e4d6"),
-    (0xa163f5925bcd9e59, "g4g6"),
-    (0xa721c6c4f8884b65, "e4d6"),
-    (0xb3671353c3479dcf, "e4d6"),
-    (0xad1abdaec9dd52c7, "c6d7"),
-    (0x833d9a463e461f74, "e4f6"),
-    (0x961317404307af79, "e4d6"),
-    (0x25137ba9a0e17136, "e4d6"),
-    (0x1c8b1a4e061e992f, "e4d6"),
-    (0xd6c7e1059ad83419, "c6b7"),
-    (0x19b06455ed3ce5fe, "e4d6"),
-    (0x0df6b1c2d6f33354, "e4d6"),
-    (0x4a1b5ebe8dd0ac81, "e4d6"),
-    (0xbff347158a124406, "e4d6"),
-    (0x138b1f3fdc69fc5c, "b7c6"),
-    (0x3dac38d72bf2b1ef, "b7c6"),
-    (0x2882b5d156b301e2, "e4d6"),
-    (0x9b82d938b555dfad, "e4d6"),
-    (0xa397fa16238ad284, "e4d6"),
-    (0xb83e0223099b0a8b, "e4d6"),
-    (0xc1ec8daf8e506444, "e4d6"),
-    (0xcbdf2bf7420fba53, "e4d6"),
-    (0x6cbfeb94404b7a69, "e4d6"),
-    (0xc16da71f9e2759fe, "e4d6"),
-    (0xa21ab8df13aa37b4, "e4d6"),
-    (0x29b5276eae1f4d2a, "e4d6"),
-    (0xd423f33d8f7d3bd4, "e4d6"),
-    (0xb401cd62a72c0594, "e4d6"),
-    (0xf2f16068f1ee28e3, "e4d6"),
-    (0xec6c91b035bd2c4a, "e4d6"),
-    (0x37b9a2f48429c6a3, "e4d6"),
-    (0xb2d8d148af391d8d, "e4d6"),
+    (0xa163f5925bcd9e59, "g4f4"),   // Qf4! → b4 → Nf6# mate in 2,
     (0x3f189a50d877c56f, "e4d6"),
     (0x8b3aecbc5f7778cf, "e4d6"),
     (0x785a6d4a22406a25, "e4d6"),
@@ -1876,7 +1846,6 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0xb379d6421efbee6a, "e4d6"),
     (0xd25b4091c7c1d389, "e4c5"),
     (0x176707ab75ff51f3, "d5f4"),
-    (0x6c93380c4cbcee2f, "d7d8n"),   // Bb7 Qg4 Qe7: d8=N! mate in 3
 ];
 
 static BOOK: OnceLock<HashMap<u64, Move>> = OnceLock::new();
