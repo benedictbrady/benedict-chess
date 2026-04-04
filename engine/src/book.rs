@@ -1815,8 +1815,7 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0x68bf948935c0bdc4, "c7a5"),
     (0x1a53a5f211a4f289, "c7b6"),
     (0xa419126f1f883e38, "c7d7"),
-    (0x176707ab75ff51f3, "d5f4"),
-    (0x075b35e8a2d10d12, "e6e7"),
+        (0x075b35e8a2d10d12, "e6e7"),
     (0x77872a38ea7e95a4, "e6e7"),
     (0x71b0b021cfd8e40a, "e6e7"),
     (0x983d7e14a018178e, "e6e7"),
@@ -1876,6 +1875,7 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0x697256db214e90bd, "e4f6"),
     (0xb379d6421efbee6a, "e4d6"),
     (0xd25b4091c7c1d389, "e4c5"),
+    (0x176707ab75ff51f3, "d5f4"),
 ];
 
 static BOOK: OnceLock<HashMap<u64, Move>> = OnceLock::new();
