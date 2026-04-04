@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Minimal solution book for 1.e3 — only reachable positions.
-/// Cleaned by reachable-extractor from 1924 entries.
+/// Cleaned by reachable-extractor from 1871 entries.
 const BOOK_DATA: &[(u64, &str)] = &[
     (0x3eb9976bbb8190ba, "b1c3"),   // mate in 15 half-moves
     (0x87834ea2f65f083c, "c3e4"),   // mate in 13 half-moves
@@ -1856,6 +1856,26 @@ const BOOK_DATA: &[(u64, &str)] = &[
     (0xb1cadaba7c7a71f8, "c7a5"),
     (0x2675cc0749dfbe30, "c7a5"),
     (0x6e3634885807a543, "c7a5"),
+    (0x93ffde8127bee0cc, "e4d6"),
+    (0x87b90b161c713666, "e4d6"),
+    (0xbccc2b653a2f80b7, "e4d6"),
+    (0xc054e46a4752a9b3, "e4d6"),
+    (0xa2cd0f059c3104d0, "e4d6"),
+    (0x11cd63ec7fd7da9f, "e4d6"),
+    (0xa1bfd2c4a389fdfc, "c8d7"),
+    (0x03145ce09a622a81, "e4d6"),
+    (0xbeaf9cea500a81dd, "e4d6"),
+    (0x3271b8f7c3190fb9, "e4d6"),
+    (0x2855020bd9283286, "e4d6"),
+    (0xa3fa9dba649d4818, "e4d6"),
+    (0x655cdb38824154e5, "e4d6"),
+    (0x8201dd65bf77eb82, "c8d7"),
+    (0xd3c9c7edaea801bd, "e4d6"),
+    (0xf0073b4726287fe0, "e4d6"),
+    (0x0367bab15b1f6d0a, "e4d6"),
+    (0x697256db214e90bd, "e4f6"),
+    (0xb379d6421efbee6a, "e4d6"),
+    (0xd25b4091c7c1d389, "e4c5"),
 ];
 
 static BOOK: OnceLock<HashMap<u64, Move>> = OnceLock::new();
