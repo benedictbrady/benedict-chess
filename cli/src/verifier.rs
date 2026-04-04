@@ -89,20 +89,89 @@ impl Verifier {
             });
             if book_move.is_none() {
                 if self.fix_mode {
-                    // Use engine to find the right move
-                    let mut searcher = ThreadSearcher::with_params(
-                        Arc::clone(&self.shared), self.params.clone(),
-                    );
-                    searcher.set_position_history(history.to_vec());
-                    searcher.silent = true;
-                    let info = searcher.search(board, 12, Some(Duration::from_secs(3)));
-                    if !info.best_move.is_null() {
-                        let uci = info.best_move.to_uci();
+                    // Smart fix: prefer moves with highest instant-mate ratio
+                    // This prevents creating deep endgame branches.
+                    let mut all_moves = MoveList::new();
+                    generate_moves(board, &mut all_moves);
+
+                    // 1) Check for mate-in-1
+                    let mut best_move = Move::NULL;
+                    for i in 0..all_moves.len() {
+                        let m = all_moves.get(i);
+                        let undo = board.make_move(m);
+                        let them = board.side_to_move;
+                        if board.king_flipped(&undo, them) {
+                            board.unmake_move(m, &undo);
+                            best_move = m;
+                            break;
+                        }
+                        board.unmake_move(m, &undo);
+                    }
+
+                    // 2) If no mate-in-1, rank by instant-mate ratio
+                    if best_move.is_null() {
+                        let mut best_ratio = 0u32;
+                        for i in 0..all_moves.len() {
+                            let m = all_moves.get(i);
+                            let undo = board.make_move(m);
+                            let them = board.side_to_move;
+                            if board.king_flipped(&undo, them) {
+                                board.unmake_move(m, &undo);
+                                best_move = m;
+                                break;
+                            }
+                            // Count Black responses that are mate-in-1
+                            let mut black_moves = MoveList::new();
+                            generate_moves(board, &mut black_moves);
+                            let mut instant = 0u32;
+                            for j in 0..black_moves.len() {
+                                let bm = black_moves.get(j);
+                                let bundo = board.make_move(bm);
+                                let bthem = board.side_to_move;
+                                if board.king_flipped(&bundo, bthem) {
+                                    board.unmake_move(bm, &bundo);
+                                    continue;
+                                }
+                                let mut w2 = MoveList::new();
+                                generate_moves(board, &mut w2);
+                                let has_mate = (0..w2.len()).any(|k| {
+                                    let wm = w2.get(k);
+                                    let wundo = board.make_move(wm);
+                                    let wthem = board.side_to_move;
+                                    let is_m = board.king_flipped(&wundo, wthem);
+                                    board.unmake_move(wm, &wundo);
+                                    is_m
+                                });
+                                if has_mate { instant += 1; }
+                                board.unmake_move(bm, &bundo);
+                            }
+                            board.unmake_move(m, &undo);
+                            if instant > best_ratio {
+                                best_ratio = instant;
+                                best_move = m;
+                            }
+                        }
+                    }
+
+                    // 3) Fallback to engine at depth 16 (higher than default 12)
+                    if best_move.is_null() {
+                        let mut searcher = ThreadSearcher::with_params(
+                            Arc::clone(&self.shared), self.params.clone(),
+                        );
+                        searcher.set_position_history(history.to_vec());
+                        searcher.silent = true;
+                        let info = searcher.search(board, 16, Some(Duration::from_secs(5)));
+                        if !info.best_move.is_null() {
+                            best_move = info.best_move;
+                        }
+                    }
+
+                    if !best_move.is_null() {
+                        let uci = best_move.to_uci();
                         eprintln!("  FIX: 0x{:016x} -> {} (depth {})", board.hash, uci, depth);
                         self.fixes.push((board.hash, uci));
-                        // Continue verification with this move
                     } else {
-                        self.failed.push((board.hash, "no book entry and engine failed".to_string()));
+                        self.failed.push((board.hash, "no book entry and all methods failed".to_string()));
                         return false;
                     }
                 } else {
