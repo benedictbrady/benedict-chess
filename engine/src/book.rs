@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 const BOOK_DATA: &[(u64, &str)] = &[
     (0x3eb9976bbb8190ba, "b1c3"),   // mate in 15 half-moves
     (0x87834ea2f65f083c, "c3e4"),   // mate in 13 half-moves
-    (0xc8b76cd20b758f82, "d2d3"),   // Qg4! Nf6 f3 reclaims, Qe6 Nd6# (mate in 4),   // mate in 11 half-moves
+    (0xc8b76cd20b758f82, "d1g4"),   // Qg4! Nf6 f3 reclaims, Qe6 Nd6# (mate in 4),   // mate in 11 half-moves
     (0xfb86e6fdac38074c, "c3e4"),   // mate in 11 half-moves
     (0x5d86cb23e1373087, "c3e4"),   // mate in 11 half-moves
     (0x3e3d207bca803998, "c3e4"),   // mate in 11 half-moves

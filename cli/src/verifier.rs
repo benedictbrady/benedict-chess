@@ -72,6 +72,7 @@ impl Verifier {
 
         // Repetition check
         if history[..history.len().saturating_sub(1)].iter().filter(|&&h| h == board.hash).count() >= 1 {
+            eprintln!("  REPETITION: hash=0x{:016x} depth={} FEN={}", board.hash, depth, fen::to_fen(board));
             self.failed.push((board.hash, "repetition detected".to_string()));
             return false;
         }
@@ -110,7 +111,7 @@ impl Verifier {
 
                     // 2) If no mate-in-1, rank by instant-mate ratio
                     if best_move.is_null() {
-                        let mut best_ratio = 0u32; // 1-level soundness enabled
+                        let mut best_ratio = 0u32; // RE-ENABLED for verification
                         for i in 0..all_moves.len() {
                             let m = all_moves.get(i);
                             // Skip bishop promotions (create vulnerabilities)
@@ -245,6 +246,7 @@ impl Verifier {
                         eprintln!("  FIX: 0x{:016x} -> {} (depth {})", board.hash, uci, depth);
                         self.fixes.push((board.hash, uci));
                     } else {
+                        eprintln!("  STUCK: 0x{:016x} at depth {} FEN={}", board.hash, depth, fen::to_fen(board));
                         self.failed.push((board.hash, "no book entry and all methods failed".to_string()));
                         return false;
                     }
