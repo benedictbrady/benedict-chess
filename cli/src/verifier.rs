@@ -61,7 +61,7 @@ impl Verifier {
         }
 
         // Depth limit to prevent infinite recursion from bugs
-        if depth > 120 {
+        if depth > 500 {
             self.failed.push((board.hash, format!("depth limit exceeded at depth {}", depth)));
             return false;
         }
@@ -72,6 +72,7 @@ impl Verifier {
 
         // Repetition check
         if history[..history.len().saturating_sub(1)].iter().filter(|&&h| h == board.hash).count() >= 1 {
+            eprintln!("  REPETITION: hash=0x{:016x} depth={} FEN={}", board.hash, depth, fen::to_fen(board));
             self.failed.push((board.hash, "repetition detected".to_string()));
             return false;
         }
@@ -89,23 +90,168 @@ impl Verifier {
             });
             if book_move.is_none() {
                 if self.fix_mode {
-                    // Use engine to find the right move
-                    let mut searcher = ThreadSearcher::with_params(
-                        Arc::clone(&self.shared), self.params.clone(),
-                    );
-                    searcher.set_position_history(history.to_vec());
-                    searcher.silent = true;
-                    let info = searcher.search(board, 12, Some(Duration::from_secs(3)));
-                    if !info.best_move.is_null() {
-                        let uci = info.best_move.to_uci();
+                    // Smart fix: prefer moves with highest instant-mate ratio
+                    // This prevents creating deep endgame branches.
+                    let mut all_moves = MoveList::new();
+                    generate_moves(board, &mut all_moves);
+
+                    // 1) Check for mate-in-1
+                    let mut best_move = Move::NULL;
+                    for i in 0..all_moves.len() {
+                        let m = all_moves.get(i);
+                        let undo = board.make_move(m);
+                        let them = board.side_to_move;
+                        if board.king_flipped(&undo, them) {
+                            board.unmake_move(m, &undo);
+                            best_move = m;
+                            break;
+                        }
+                        board.unmake_move(m, &undo);
+                    }
+
+                    // 2) If no mate-in-1, rank by instant-mate ratio
+                    if best_move.is_null() {
+                        let mut best_ratio = 0u32; // RE-ENABLED for verification
+                        for i in 0..all_moves.len() {
+                            let m = all_moves.get(i);
+                            // Skip bishop promotions (create vulnerabilities)
+                            if m.to_uci().ends_with('b') { continue; }
+                            let undo = board.make_move(m);
+                            let them = board.side_to_move;
+                            if board.king_flipped(&undo, them) {
+                                board.unmake_move(m, &undo);
+                                best_move = m;
+                                break;
+                            }
+                            // Skip moves that lead to a repeated position (draw)
+                            if history.iter().any(|&h| h == board.hash) {
+                                board.unmake_move(m, &undo);
+                                continue;
+                            }
+                            // Count Black responses that are mate-in-1
+                            // SOUNDNESS: skip this move if ANY Black response flips White's king
+                            let mut black_moves = MoveList::new();
+                            generate_moves(board, &mut black_moves);
+                            let mut instant = 0u32;
+                            let mut black_wins = false;
+                            for j in 0..black_moves.len() {
+                                let bm = black_moves.get(j);
+                                let bundo = board.make_move(bm);
+                                let bthem = board.side_to_move;
+                                if board.king_flipped(&bundo, bthem) {
+                                    // Level 1: Black flips White's king immediately
+                                    board.unmake_move(bm, &bundo);
+                                    black_wins = true;
+                                    break;
+                                }
+                                // Level 2: check if Black can force a king flip in 2 moves
+                                // For each White response, check if ALL of them lead to Black flipping
+                                let mut w2 = MoveList::new();
+                                generate_moves(board, &mut w2);
+                                let mut white_has_safe_response = false;
+                                let mut has_mate = false;
+                                for k in 0..w2.len() {
+                                    let wm = w2.get(k);
+                                    let wundo = board.make_move(wm);
+                                    let wthem = board.side_to_move;
+                                    if board.king_flipped(&wundo, wthem) {
+                                        // This White move flips Black's king = mate
+                                        board.unmake_move(wm, &wundo);
+                                        has_mate = true;
+                                        white_has_safe_response = true;
+                                        break;
+                                    }
+                                    // Check if ANY Black response flips White's king
+                                    let mut b2 = MoveList::new();
+                                    generate_moves(board, &mut b2);
+                                    let mut b2_wins = false;
+                                    for l in 0..b2.len() {
+                                        let bm2 = b2.get(l);
+                                        let bundo2 = board.make_move(bm2);
+                                        let bthem2 = board.side_to_move;
+                                        if board.king_flipped(&bundo2, bthem2) {
+                                            board.unmake_move(bm2, &bundo2);
+                                            b2_wins = true;
+                                            break;
+                                        }
+                                        board.unmake_move(bm2, &bundo2);
+                                    }
+                                    board.unmake_move(wm, &wundo);
+                                    if !b2_wins {
+                                        white_has_safe_response = true;
+                                        // Don't break — still need to check has_mate
+                                    }
+                                }
+                                if !white_has_safe_response {
+                                    // Black can force king flip in 2 moves from every White response
+                                    board.unmake_move(bm, &bundo);
+                                    black_wins = true;
+                                    break;
+                                }
+                                if has_mate { instant += 1; }
+                                board.unmake_move(bm, &bundo);
+                            }
+                            board.unmake_move(m, &undo);
+                            if black_wins { continue; } // Skip — Black wins
+                            if instant > best_ratio {
+                                best_ratio = instant;
+                                best_move = m;
+                            }
+                        }
+                    }
+
+                    // 3) Fallback to engine — but STILL check soundness
+                    if best_move.is_null() {
+                        let mut searcher = ThreadSearcher::with_params(
+                            Arc::clone(&self.shared), self.params.clone(),
+                        );
+                        searcher.set_position_history(history.to_vec());
+                        searcher.silent = true;
+                        let info = searcher.search(board, 20, Some(Duration::from_secs(10)));
+                        if !info.best_move.is_null() {
+                            // Soundness check: verify Black can't immediately flip White's king
+                            let eng_move = info.best_move;
+                            let eng_legal = (0..all_moves.len())
+                                .map(|idx| all_moves.get(idx))
+                                .find(|m| m.from_sq() == eng_move.from_sq() && m.to_sq() == eng_move.to_sq());
+                            if let Some(legal_eng) = eng_legal {
+                                let eng_undo = board.make_move(legal_eng);
+                                let eng_them = board.side_to_move;
+                                let mut eng_safe = true;
+                                if !board.king_flipped(&eng_undo, eng_them) {
+                                    let mut eng_black = MoveList::new();
+                                    generate_moves(board, &mut eng_black);
+                                    for j in 0..eng_black.len() {
+                                        let bm = eng_black.get(j);
+                                        let bundo = board.make_move(bm);
+                                        let bthem = board.side_to_move;
+                                        if board.king_flipped(&bundo, bthem) {
+                                            board.unmake_move(bm, &bundo);
+                                            eng_safe = false;
+                                            break;
+                                        }
+                                        board.unmake_move(bm, &bundo);
+                                    }
+                                }
+                                board.unmake_move(legal_eng, &eng_undo);
+                                if eng_safe {
+                                    best_move = legal_eng;
+                                }
+                            }
+                        }
+                    }
+
+                    if !best_move.is_null() {
+                        let uci = best_move.to_uci();
                         eprintln!("  FIX: 0x{:016x} -> {} (depth {})", board.hash, uci, depth);
                         self.fixes.push((board.hash, uci));
-                        // Continue verification with this move
                     } else {
-                        self.failed.push((board.hash, "no book entry and engine failed".to_string()));
+                        eprintln!("  STUCK: 0x{:016x} at depth {} FEN={}", board.hash, depth, fen::to_fen(board));
+                        self.failed.push((board.hash, "no book entry and all methods failed".to_string()));
                         return false;
                     }
                 } else {
+                    eprintln!("  MISSING: 0x{:016x} at depth {} (no safe move found)", board.hash, depth);
                     self.failed.push((board.hash, "no book entry for White position".to_string()));
                     return false;
                 }
@@ -177,6 +323,10 @@ impl Verifier {
                 let them = board.side_to_move;
                 if board.king_flipped(&undo, them) {
                     board.unmake_move(m, &undo);
+                    // Print the parent info for debugging
+                    eprintln!("  BAD: Black {} flips king at hash 0x{:016x} (depth {})",
+                        m.to_uci(), board.hash, depth);
+                    eprintln!("    Parent path depth: {}", depth);
                     self.failed.push((
                         board.hash,
                         format!("Black move {} flips White's king!", m.to_uci()),
@@ -205,6 +355,13 @@ impl Verifier {
 }
 
 fn main() {
+    // Use a large stack to handle deep recursion (depth 120+)
+    let builder = std::thread::Builder::new().stack_size(128 * 1024 * 1024);
+    let handler = builder.spawn(|| real_main()).unwrap();
+    handler.join().unwrap();
+}
+
+fn real_main() {
     benedict_engine::tables::tables();
 
     let fix_mode = std::env::args().any(|a| a == "--fix");

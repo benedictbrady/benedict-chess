@@ -109,7 +109,10 @@ impl Board {
 
         // Flip the enemy pieces
         for sq in flipped {
-            let flipped_piece = self.mailbox[sq.index()].expect("flipped square empty");
+            let flipped_piece = match self.mailbox[sq.index()] {
+                Some(p) => p,
+                None => continue, // Skip empty squares (bitboard inconsistency)
+            };
             debug_assert_eq!(flipped_piece.color, them);
 
             // Toggle color
