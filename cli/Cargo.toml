@@ -47,5 +47,9 @@ path = "src/reachable_extractor.rs"
 name = "smart-solver"
 path = "src/smart_solver.rs"
 
+[[bin]]
+name = "subtree-solver"
+path = "src/subtree_solver.rs"
+
 [dependencies]
 benedict-engine = { path = "../engine" }
